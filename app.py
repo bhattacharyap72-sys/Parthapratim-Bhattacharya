@@ -2,7 +2,9 @@ import streamlit as st
 import pymysql
 import pymysql.cursors
 import random
+import string
 import base64
+from datetime import date
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -15,35 +17,18 @@ st.set_page_config(
 # ================= CUSTOM CSS FOR BETTER UI =================
 st.markdown("""
     <style>
-    /* Main Background & Font */
     .main {
         background-color: #f8f9fa;
     }
-    
-    /* Custom Headers */
     h1, h2, h3 {
         color: #1e3a8a;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-    
-    /* Card design for questions */
-    .question-card {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        margin-bottom: 20px;
-        border-left: 5px solid #2563eb;
-    }
-    
-    /* Buttons Styling */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
         transition: all 0.3s ease;
     }
-    
-    /* Custom Banner */
     .banner {
         background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
         color: white;
@@ -51,6 +36,13 @@ st.markdown("""
         border-radius: 12px;
         text-align: center;
         margin-bottom: 25px;
+    }
+    .cred-box {
+        background-color: #e0f2fe;
+        border-left: 6px solid #0284c7;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -70,12 +62,67 @@ ADMIN_PASSWORD = "admin"
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
 
+# ================= AUTO SETUP DATABASE TABLES =================
+def setup_database():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create/Update Students Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS students (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                address TEXT,
+                school_name VARCHAR(150),
+                class_name VARCHAR(20) NOT NULL,
+                dob DATE,
+                userid VARCHAR(50) UNIQUE,
+                password VARCHAR(50),
+                seat_for_exam VARCHAR(10) DEFAULT 'yes'
+            )""")
+        
+        # Ensure older databases get newly added columns safely
+        existing_cols = []
+        cursor.execute("SHOW COLUMNS FROM students")
+        existing_cols = [row['Field'] for row in cursor.fetchall()]
+        
+        col_definitions = {
+            'address': "TEXT",
+            'school_name': "VARCHAR(150)",
+            'dob': "DATE",
+            'userid': "VARCHAR(50)",
+            'password': "VARCHAR(50)",
+            'seat_for_exam': "VARCHAR(10) DEFAULT 'yes'"
+        }
+        
+        for col, dtype in col_definitions.items():
+            if col not in existing_cols:
+                cursor.execute(f"ALTER TABLE students ADD COLUMN {col} {dtype}")
+                
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Database Initialization Error: {e}")
+
+setup_database()
+
+# Helper function to generate Unique Credentials
+def generate_credentials(name):
+    clean_name = "".join(e for e in name if e.isalnum()).lower()[:4]
+    rand_num = random.randint(1000, 9999)
+    userid = f"stu_{clean_name}{rand_num}"
+    
+    chars = string.ascii_letters + string.digits
+    password = "".join(random.choice(chars) for _ in range(6))
+    return userid, password
+
 # ================= LOGIN SYSTEM =================
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.markdown("<div class='banner'><h1>🎓 Online Examination System</h1><p>Secure Portal Login</p></div>", unsafe_allow_html=True)
+    st.markdown("<div class='banner'><h1>🎓 Online Examination System</h1><p>Secure Portal Authorization</p></div>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -95,58 +142,126 @@ if not st.session_state.authenticated:
 # ================= MAIN MENU =================
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3429/3429149.png", width=100)
 st.sidebar.title("Navigation")
-menu = st.sidebar.radio("Select Module", ["📝 Student Exam Portal", "📊 View Results", "⚙️ Admin Panel"])
+menu = st.sidebar.radio("Select Module", ["📝 Student Portal", "📊 View Results", "⚙️ Admin Panel"])
 
-# ---------- 1. STUDENT EXAM PORTAL ----------
-if menu == "📝 Student Exam Portal":
-    st.markdown("<div class='banner'><h2>📝 Examination Portal</h2></div>", unsafe_allow_html=True)
+# ---------- 1. STUDENT PORTAL ----------
+if menu == "📝 Student Portal":
+    st.markdown("<div class='banner'><h2>📝 Student Examination Portal</h2></div>", unsafe_allow_html=True)
     
-    if "exam_started" not in st.session_state:
-        st.session_state.exam_started = False
+    student_tab = st.radio("Choose Action", ["📋 New Student Registration", "🔑 Login & Start Exam"], horizontal=True)
+    st.divider()
 
-    if not st.session_state.exam_started:
-        with st.container():
+    # --- REGISTRATION SECTION ---
+    if student_tab == "📋 New Student Registration":
+        st.subheader("👤 Student Registration Form")
+        
+        with st.form("reg_form"):
             col1, col2 = st.columns(2)
             with col1:
-                stu_class = st.selectbox("📌 Select Class", CLASSES)
-                stu_roll = st.text_input("🆔 Roll No", placeholder="e.g. 12")
-                stu_name = st.text_input("👤 Student Name", placeholder="e.g. Rahul Sharma")
-
-            # Load Subjects
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT subject_name FROM subjects WHERE class_name=%s", (stu_class,))
-                subjects = [r['subject_name'] for r in cursor.fetchall()]
-            conn.close()
-
+                reg_name = st.text_input("Full Name *", placeholder="e.g. Rahul Sharma")
+                reg_school = st.text_input("School Name *", placeholder="e.g. ABC High School")
+                reg_class = st.selectbox("Class *", CLASSES)
             with col2:
-                stu_sub = st.selectbox("📚 Select Subject", subjects if subjects else ["No Subjects Found"])
+                reg_dob = st.date_input("Date of Birth *", min_value=date(1990, 1, 1), max_value=date.today())
+                reg_address = st.text_area("Address *", placeholder="Enter full address")
                 
-                chapters = []
-                if subjects:
+            submit_reg = st.form_submit_button("Submit Registration", type="primary", use_container_width=True)
+
+        if submit_reg:
+            if not (reg_name and reg_school and reg_address):
+                st.warning("⚠️ অনুগ্রহ করে সমস্ত প্রয়োজনীয় বিবরণ প্রদান করুন!")
+            else:
+                userid, password = generate_credentials(reg_name)
+                
+                try:
                     conn = get_db_connection()
                     with conn.cursor() as cursor:
-                        cursor.execute("SELECT chapter_name FROM chapters WHERE class_name=%s AND subject_name=%s", (stu_class, stu_sub))
-                        chapters = [r['chapter_name'] for r in cursor.fetchall()]
+                        sql = """INSERT INTO students 
+                                 (name, address, school_name, class_name, dob, userid, password, seat_for_exam)
+                                 VALUES (%s, %s, %s, %s, %s, %s, %s, 'yes')"""
+                        cursor.execute(sql, (reg_name, reg_address, reg_school, reg_class, reg_dob, userid, password))
+                        conn.commit()
                     conn.close()
-                
-                stu_chap = st.selectbox("📖 Select Chapter", ["All Chapters (Combined)"] + chapters)
+                    
+                    st.success("🎉 রেজিস্ট্রেশন সফলভাবে সম্পন্ন হয়েছে!")
+                    st.markdown(f"""
+                        <div class='cred-box'>
+                            <h4>📌 আপনার পরীক্ষার লগইন বিবরণ (Credentials):</h4>
+                            <p><b>User ID:</b> <code>{userid}</code></p>
+                            <p><b>Password:</b> <code>{password}</code></p>
+                            <small>⚠️ এই User ID এবং Password টি লিখে রাখুন। পরীক্ষায় অংশগ্রহণের জন্য এটি প্রয়োজন হবে।</small>
+                        </div>
+                    """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"রেজিস্ট্রেশনে ত্রুটি ঘটেছে: {e}")
 
-            st.write("")
-            if st.button("🚀 Start Exam Now", type="primary", use_container_width=True):
-                if not (stu_roll and stu_name and subjects):
-                    st.warning("⚠️ সকল তথ্য সঠিকভাবে পূরণ করুন!")
+    # --- EXAM LOGIN SECTION ---
+    elif student_tab == "🔑 Login & Start Exam":
+        if "exam_started" not in st.session_state:
+            st.session_state.exam_started = False
+
+        if not st.session_state.exam_started:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("🔑 Student Authentication")
+                login_uid = st.text_input("User ID", placeholder="Enter your generated User ID")
+                login_pwd = st.text_input("Password", type="password", placeholder="Enter Password")
+
+            if st.button("Verify & Proceed to Exam", type="primary"):
+                if not (login_uid and login_pwd):
+                    st.warning("⚠️ User ID এবং Password উভয়ই প্রদান করুন!")
                 else:
                     conn = get_db_connection()
                     with conn.cursor() as cursor:
-                        cursor.execute("INSERT INTO students (class_name, roll_no, name) VALUES (%s, %s, %s)", (stu_class, stu_roll, stu_name))
-                        conn.commit()
-                        student_id = cursor.lastrowid
+                        cursor.execute("SELECT * FROM students WHERE userid=%s AND password=%s", (login_uid, login_pwd))
+                        student = cursor.fetchone()
+                    conn.close()
 
+                    if not student:
+                        st.error("❌ ভুল User ID অথবা Password!")
+                    elif student['seat_for_exam'].lower() == 'no':
+                        st.error("🚫 এডমিনিস্ট্রেটর আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disable) করেছেন! আপনি আর পরীক্ষা দিতে পারবেন না।")
+                    else:
+                        st.session_state.logged_student = student
+                        st.session_state.exam_ready = True
+                        st.success(f"স্বাগতম, {student['name']}! আপনার অ্যাকাউন্ট অনুমোদিত হয়েছে।")
+
+            # Subject & Chapter Selection post login
+            if st.session_state.get("exam_ready", False):
+                st.divider()
+                st.subheader("📚 Select Exam Details")
+                stu = st.session_state.logged_student
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.info(f"**Candidate:** {stu['name']} | **Class:** {stu['class_name']}")
+                    
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
+                        cursor.execute("SELECT subject_name FROM subjects WHERE class_name=%s", (stu['class_name'],))
+                        subjects = [r['subject_name'] for r in cursor.fetchall()]
+                    conn.close()
+
+                    stu_sub = st.selectbox("Select Subject", subjects if subjects else ["No Subjects Found"])
+
+                with col_b:
+                    chapters = []
+                    if subjects:
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("SELECT chapter_name FROM chapters WHERE class_name=%s AND subject_name=%s", (stu['class_name'], stu_sub))
+                            chapters = [r['chapter_name'] for r in cursor.fetchall()]
+                        conn.close()
+                    
+                    stu_chap = st.selectbox("Select Chapter", ["All Chapters (Combined)"] + chapters)
+
+                if st.button("🚀 Start Exam Now", type="primary", use_container_width=True):
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
                         if stu_chap == "All Chapters (Combined)":
-                            cursor.execute("SELECT * FROM questions WHERE class_name=%s AND subject_name=%s ORDER BY RAND() LIMIT 40", (stu_class, stu_sub))
+                            cursor.execute("SELECT * FROM questions WHERE class_name=%s AND subject_name=%s ORDER BY RAND() LIMIT 40", (stu['class_name'], stu_sub))
                         else:
-                            cursor.execute("SELECT * FROM questions WHERE class_name=%s AND subject_name=%s AND chapter_name=%s ORDER BY RAND() LIMIT 40", (stu_class, stu_sub, stu_chap))
+                            cursor.execute("SELECT * FROM questions WHERE class_name=%s AND subject_name=%s AND chapter_name=%s ORDER BY RAND() LIMIT 40", (stu['class_name'], stu_sub, stu_chap))
                         raw_q = cursor.fetchall()
                     conn.close()
 
@@ -167,59 +282,66 @@ if menu == "📝 Student Exam Portal":
                             })
                         
                         st.session_state.prepared_questions = prepared_q
-                        st.session_state.student_info = {'id': student_id, 'class': stu_class, 'roll': stu_roll, 'name': stu_name, 'sub': stu_sub, 'chap': stu_chap}
+                        st.session_state.student_info = {
+                            'id': stu['id'], 
+                            'class': stu['class_name'], 
+                            'roll': stu['userid'], 
+                            'name': stu['name'], 
+                            'sub': stu_sub, 
+                            'chap': stu_chap
+                        }
                         st.session_state.user_answers = {}
                         st.session_state.exam_started = True
                         st.rerun()
 
-    else:
-        # Candidate Info Header
-        info = st.session_state.student_info
-        st.info(f"👤 **Student:** {info['name']} | **Roll:** {info['roll']} | **Class:** {info['class']} | **Subject:** {info['sub']}")
-        
-        q_list = st.session_state.prepared_questions
-        
-        with st.form("exam_form"):
-            for idx, q in enumerate(q_list):
-                st.markdown(f"#### Q{idx+1}. {q['text']}")
-                
-                # Render Image if Available
-                if q['image']:
-                    try:
-                        st.image(q['image'], width=350)
-                    except:
-                        pass
-                
-                choice = st.radio(f"Select Option for Q{idx+1}:", q['options'], index=None, key=f"q_{idx}")
-                if choice:
-                    st.session_state.user_answers[idx] = q['options'].index(choice) + 1
-                st.divider()
-
-            submitted = st.form_submit_button("📤 Submit Final Exam", type="primary", use_container_width=True)
-
-        if submitted:
-            score = 0
-            for idx, q in enumerate(q_list):
-                if st.session_state.user_answers.get(idx) == q['correct']:
-                    score += 1
+        else:
+            # Candidate Exam Paper Interface
+            info = st.session_state.student_info
+            st.info(f"👤 **Student:** {info['name']} | **User ID:** {info['roll']} | **Class:** {info['class']} | **Subject:** {info['sub']}")
             
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                sql = """INSERT INTO exam_results 
-                         (student_id, class_name, roll_no, student_name, subject_name, chapter_name, score, total_questions)
-                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
-                cursor.execute(sql, (
-                    info['id'], info['class'], info['roll'], info['name'], 
-                    info['sub'], info['chap'], score, len(q_list)
-                ))
-                conn.commit()
-            conn.close()
+            q_list = st.session_state.prepared_questions
+            
+            with st.form("exam_form"):
+                for idx, q in enumerate(q_list):
+                    st.markdown(f"#### Q{idx+1}. {q['text']}")
+                    
+                    if q['image']:
+                        try:
+                            st.image(q['image'], width=350)
+                        except:
+                            pass
+                    
+                    choice = st.radio(f"Select Option for Q{idx+1}:", q['options'], index=None, key=f"q_{idx}")
+                    if choice:
+                        st.session_state.user_answers[idx] = q['options'].index(choice) + 1
+                    st.divider()
 
-            st.balloons()
-            st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{score} / {len(q_list)}**")
-            if st.button("⬅️ Back to Home"):
-                st.session_state.exam_started = False
-                st.rerun()
+                submitted = st.form_submit_button("📤 Submit Final Exam", type="primary", use_container_width=True)
+
+            if submitted:
+                score = 0
+                for idx, q in enumerate(q_list):
+                    if st.session_state.user_answers.get(idx) == q['correct']:
+                        score += 1
+                
+                conn = get_db_connection()
+                with conn.cursor() as cursor:
+                    sql = """INSERT INTO exam_results 
+                             (student_id, class_name, roll_no, student_name, subject_name, chapter_name, score, total_questions)
+                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
+                    cursor.execute(sql, (
+                        info['id'], info['class'], info['roll'], info['name'], 
+                        info['sub'], info['chap'], score, len(q_list)
+                    ))
+                    conn.commit()
+                conn.close()
+
+                st.balloons()
+                st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{score} / {len(q_list)}**")
+                if st.button("⬅️ Back to Home"):
+                    st.session_state.exam_started = False
+                    st.session_state.exam_ready = False
+                    st.rerun()
 
 # ---------- 2. VIEW RESULTS ----------
 elif menu == "📊 View Results":
@@ -229,13 +351,13 @@ elif menu == "📊 View Results":
     with col1:
         res_cls = st.selectbox("Class", CLASSES)
     with col2:
-        res_roll = st.text_input("Enter Student Roll No")
+        res_uid = st.text_input("Enter Student User ID")
 
     if st.button("🔍 Search Performance Record", use_container_width=True):
-        if res_roll:
+        if res_uid:
             conn = get_db_connection()
             with conn.cursor() as cursor:
-                cursor.execute("SELECT subject_name, chapter_name, score, total_questions, exam_date FROM exam_results WHERE class_name=%s AND roll_no=%s", (res_cls, res_roll))
+                cursor.execute("SELECT student_name, subject_name, chapter_name, score, total_questions, exam_date FROM exam_results WHERE class_name=%s AND roll_no=%s", (res_cls, res_uid))
                 rows = cursor.fetchall()
             conn.close()
 
@@ -251,9 +373,45 @@ elif menu == "⚙️ Admin Panel":
     admin_pwd = st.text_input("🔐 Enter Admin Passcode", type="password")
     
     if admin_pwd == ADMIN_PASSWORD:
-        tab1, tab2, tab3 = st.tabs(["📚 Subjects & Chapters", "➕ Add Question (With Image)", "🗑️ Manage Questions"])
+        tab1, tab2, tab3, tab4 = st.tabs(["👥 Student Credentials & Seat Control", "📚 Subjects & Chapters", "➕ Add Question", "🗑️ Manage Questions"])
 
+        # TAB 1: STUDENT CREDENTIALS & SEAT MANAGEMENT
         with tab1:
+            st.subheader("📋 Registered Students Master Database")
+            
+            if st.button("🔄 Refresh Student Data"):
+                st.rerun()
+
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id, name, class_name, school_name, address, dob, userid, password, seat_for_exam FROM students")
+                students_data = cursor.fetchall()
+            conn.close()
+
+            if students_data:
+                st.dataframe(students_data, use_container_width=True)
+                
+                st.divider()
+                st.subheader("🚫 Modify Student Exam Permission (`seat_for_exam`)")
+                
+                stu_dict = {f"{s['name']} (ID: {s['userid']} | Class: {s['class_name']}) - Permission: {s['seat_for_exam']}": s['id'] for s in students_data}
+                selected_stu_str = st.selectbox("Select Student to Modify Access", list(stu_dict.keys()))
+                new_status = st.radio("Exam Access Permission:", ["yes", "no"], horizontal=True)
+
+                if st.button("Update Access Permission", type="primary"):
+                    target_id = stu_dict[selected_stu_str]
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
+                        cursor.execute("UPDATE students SET seat_for_exam=%s WHERE id=%s", (new_status, target_id))
+                        conn.commit()
+                    conn.close()
+                    st.success(f"✅ অনুমতির স্থিতি সফলভাবে '{new_status}'-এ আপডেট করা হয়েছে!")
+                    st.rerun()
+            else:
+                st.info("কোনো রেজিস্ট্রেশন ডাটা পাওয়া যায়নি।")
+
+        # TAB 2: SUBJECTS & CHAPTERS
+        with tab2:
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("Add Subject")
@@ -289,7 +447,8 @@ elif menu == "⚙️ Admin Panel":
                         conn.close()
                         st.success("✅ চ্যাপ্টার যুক্ত হয়েছে!")
 
-        with tab2:
+        # TAB 3: ADD QUESTION
+        with tab3:
             st.subheader("Create New Question")
             q_cls = st.selectbox("Class", CLASSES, key="q_cls")
             
@@ -313,7 +472,6 @@ elif menu == "⚙️ Admin Panel":
             
             q_text = st.text_area("Question Text / Statement")
             
-            # --- PHOTO UPLOAD OPTION ---
             q_img_file = st.file_uploader("🖼️ Upload Diagram/Image (Optional)", type=['png', 'jpg', 'jpeg'])
             img_url = None
             if q_img_file:
@@ -346,7 +504,8 @@ elif menu == "⚙️ Admin Panel":
                     conn.close()
                     st.success("✅ প্রশ্ন সফলভাবে সংরক্ষণ করা হয়েছে!")
 
-        with tab3:
+        # TAB 4: DELETE QUESTION
+        with tab4:
             st.subheader("Delete Question")
             del_cls = st.selectbox("Class", CLASSES, key="del_cls")
             
