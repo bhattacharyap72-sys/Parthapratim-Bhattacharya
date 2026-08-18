@@ -2,7 +2,7 @@ import streamlit as st
 import pymysql
 import pymysql.cursors
 import random
-from PIL import Image
+import base64
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -53,7 +53,7 @@ st.markdown("""
         margin-bottom: 25px;
     }
     </style>
-""", unsafe_allow_text=True)
+""", unsafe_allow_html=True)
 
 # ================= DB CONFIGURATION =================
 DB_CONFIG = {
@@ -75,7 +75,7 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.markdown("<div class='banner'><h1>🎓 Online Examination System</h1><p>Secure Portal Login</p></div>", unsafe_allow_text=True)
+    st.markdown("<div class='banner'><h1>🎓 Online Examination System</h1><p>Secure Portal Login</p></div>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -99,7 +99,7 @@ menu = st.sidebar.radio("Select Module", ["📝 Student Exam Portal", "📊 View
 
 # ---------- 1. STUDENT EXAM PORTAL ----------
 if menu == "📝 Student Exam Portal":
-    st.markdown("<div class='banner'><h2>📝 Examination Portal</h2></div>", unsafe_allow_text=True)
+    st.markdown("<div class='banner'><h2>📝 Examination Portal</h2></div>", unsafe_allow_html=True)
     
     if "exam_started" not in st.session_state:
         st.session_state.exam_started = False
@@ -223,7 +223,7 @@ if menu == "📝 Student Exam Portal":
 
 # ---------- 2. VIEW RESULTS ----------
 elif menu == "📊 View Results":
-    st.markdown("<div class='banner'><h2>📊 Student Assessment Results</h2></div>", unsafe_allow_text=True)
+    st.markdown("<div class='banner'><h2>📊 Student Assessment Results</h2></div>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -246,7 +246,7 @@ elif menu == "📊 View Results":
 
 # ---------- 3. ADMIN PANEL ----------
 elif menu == "⚙️ Admin Panel":
-    st.markdown("<div class='banner'><h2>⚙️ Administrative Control</h2></div>", unsafe_allow_text=True)
+    st.markdown("<div class='banner'><h2>⚙️ Administrative Control</h2></div>", unsafe_allow_html=True)
     
     admin_pwd = st.text_input("🔐 Enter Admin Passcode", type="password")
     
@@ -317,7 +317,9 @@ elif menu == "⚙️ Admin Panel":
             q_img_file = st.file_uploader("🖼️ Upload Diagram/Image (Optional)", type=['png', 'jpg', 'jpeg'])
             img_url = None
             if q_img_file:
-                # If image hosted, store URL, or input direct Web Image URL
+                bytes_data = q_img_file.getvalue()
+                base64_str = base64.b64encode(bytes_data).decode('utf-8')
+                img_url = f"data:image/png;base64,{base64_str}"
                 st.image(q_img_file, caption="Uploaded Preview", width=200)
 
             col1, col2 = st.columns(2)
