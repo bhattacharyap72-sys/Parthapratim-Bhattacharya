@@ -746,17 +746,19 @@ elif menu == "👑 Super Admin Panel":
         
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id, teacher_name, institute_name, teacher_code, email, status FROM teachers")
+            # ID and Password along with other details fetched
+            cursor.execute("SELECT id, teacher_name, institute_name, teacher_code, email, password, status FROM teachers")
             all_teachers = cursor.fetchall()
         conn.close()
 
-        st.subheader("👨‍🏫 Registered Teachers Master List")
+        st.subheader("👨‍🏫 Registered Teachers Master List (ID & Passwords)")
         if all_teachers:
+            # Displaying full teacher details including ID & Password in dataframe
             st.dataframe(all_teachers, use_container_width=True)
             
             st.divider()
             st.subheader("🛡️ Approve / Block Teachers")
-            t_map = {f"{t['teacher_name']} ({t['email']}) - Current Status: {t['status']}": t['id'] for t in all_teachers}
+            t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['email']}) - Status: {t['status']}": t['id'] for t in all_teachers}
             sel_t = st.selectbox("Select Teacher Account", list(t_map.keys()))
             new_t_status = st.radio("Account Permission:", ["approved", "blocked", "pending"], horizontal=True)
 
