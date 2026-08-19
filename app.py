@@ -276,7 +276,7 @@ if menu == "📝 Student Portal":
             selected_t_str = st.selectbox(
                 "Select Administrator / Teacher *", 
                 list(teacher_map.keys()), 
-                help="আপনি যদি আপনার শিক্ষককে তালিকায় না পান, 'System Administrator' বেছে নিন। অ্যাডমিন আপনাকে শিক্ষক বরাদ্দ করে দেবেন।\N iF NO TEACHER IS IN YOUR CHOICE PLESE SELECT ADMINISTRATOR"
+                help="আপনি যদি আপনার শিক্ষককে তালিকায় না পান, 'System Administrator' বেছে নিন। অ্যাডমিন আপনাকে শিক্ষক বরাদ্দ করে দেবেন।\n iF NO TEACHER IS IN YOUR CHOICE PLESE SELECT ADMINISTRATOR"
             )
             col1, col2 = st.columns(2)
             with col1:
