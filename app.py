@@ -4,7 +4,8 @@ import pymysql.cursors
 import random
 import string
 import base64
-from datetime import date
+import time
+from datetime import date, datetime
 from io import BytesIO
 
 # --- ReportLab Imports for PDF Generation ---
@@ -21,78 +22,122 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= DARK THEME & CUSTOM CSS =================
+# ================= DARK THEME & HIGH CONTRAST CUSTOM CSS =================
 st.markdown("""
     <style>
+    /* Global App Background */
     .stApp, .main {
-        background-color: #0e1117 !important;
-        color: #e0e0e0 !important;
+        background-color: #0b0f19 !important;
+        color: #f3f4f6 !important;
     }
+    
+    /* High Contrast Headers */
     h1, h2, h3, h4, h5, h6 {
         color: #60a5fa !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-weight: 700 !important;
+    }
+
+    /* Labels - High Contrast White */
+    label, div[data-testid="stMarkdownContainer"] p {
+        color: #f9fafb !important;
+        font-weight: 600 !important;
     }
     
-    /* General Input, Select, and Date Elements */
-    .stTextInput>div>div>input, 
-    .stSelectbox>div>div>div, 
-    .stDateInput>div>div>input {
-        background-color: #1f2937 !important;
+    /* Inputs, Selectboxes, Date Inputs - High Contrast Borders & BG */
+    .stTextInput input, 
+    .stSelectbox div[data-baseweb="select"] > div, 
+    .stDateInput input {
+        background-color: #111827 !important;
         color: #ffffff !important;
-        border: 1px solid #374151 !important;
-        border-radius: 6px;
+        border: 2px solid #4b5563 !important;
+        border-radius: 6px !important;
+        font-weight: 500 !important;
+    }
+
+    .stTextInput input:focus, 
+    .stSelectbox div[data-baseweb="select"]:focus-within {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 1px #3b82f6 !important;
     }
     
-    /* STUDENT ADDRESS (TEXTAREA) */
+    /* Textarea Styling */
     div[data-baseweb="textarea"],
     div[data-baseweb="textarea"] > textarea,
     .stTextArea textarea {
-        background-color: #000000 !important;
+        background-color: #111827 !important;
         color: #ffffff !important;
-        border: 1px solid #374151 !important;
+        border: 2px solid #4b5563 !important;
         border-radius: 6px !important;
-    }
-
-    /* Textarea Focus Effect */
-    div[data-baseweb="textarea"]:focus-within {
-        border-color: #2563eb !important;
-        box-shadow: 0 0 0 1px #2563eb !important;
+        font-weight: 500 !important;
     }
 
     /* Buttons */
     .stButton>button {
         border-radius: 8px;
-        font-weight: 600;
+        font-weight: 700;
         background-color: #2563eb !important;
         color: #ffffff !important;
         border: none !important;
         transition: all 0.3s ease;
+        padding: 0.5rem 1rem;
     }
     .stButton>button:hover {
         background-color: #1d4ed8 !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
     }
     
-    /* Custom Containers */
+    /* Containers & Banners */
     .banner {
         background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
         color: #ffffff;
-        padding: 25px;
+        padding: 20px;
         border-radius: 12px;
         text-align: center;
-        margin-bottom: 25px;
-        border: 1px solid #1e40af;
+        margin-bottom: 20px;
+        border: 1px solid #2563eb;
     }
     .cred-box {
-        background-color: #1e293b;
+        background-color: #1f2937;
         border-left: 6px solid #38bdf8;
         padding: 15px;
         border-radius: 8px;
         margin-top: 15px;
-        color: #f1f5f9;
+        color: #f9fafb;
     }
-    [data-testid="stDataFrame"] {
-        background-color: #1f2937 !important;
+    .timer-box {
+        background-color: #7f1d1d;
+        color: #fef2f2;
+        padding: 12px;
         border-radius: 8px;
+        text-align: center;
+        font-size: 1.2rem;
+        font-weight: bold;
+        border: 1px solid #ef4444;
+        margin-bottom: 15px;
+    }
+    
+    /* Footer Styling */
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #030712;
+        color: #9ca3af;
+        text-align: center;
+        padding: 8px 0;
+        font-size: 0.9rem;
+        border-top: 1px solid #1f2937;
+        z-index: 9999;
+    }
+    .footer a {
+        color: #38bdf8 !important;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .main .block-container {
+        padding-bottom: 60px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -112,7 +157,7 @@ SUPER_ADMIN_PASSWORD = "M@m0ni4thjune"
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
 
-# ================= PDF GENERATOR =================
+# ================= PDF GENERATOR (WITH TOTAL MARKS) =================
 def generate_pdf_report(data_rows, title="Exam Result Sheet"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -130,8 +175,16 @@ def generate_pdf_report(data_rows, title="Exam Result Sheet"):
     if data_rows:
         headers = list(data_rows[0].keys())
         table_data = [[str(h).replace('_', ' ').title() for h in headers]]
+        
+        total_obtained_marks = 0
+        total_max_marks = 0
+
         for row in data_rows:
             table_data.append([str(row[h]) if row[h] is not None else "" for h in headers])
+            if 'score' in row and row['score'] is not None:
+                total_obtained_marks += int(row['score'])
+            if 'total_questions' in row and row['total_questions'] is not None:
+                total_max_marks += int(row['total_questions'])
             
         t = Table(table_data)
         t.setStyle(TableStyle([
@@ -145,6 +198,17 @@ def generate_pdf_report(data_rows, title="Exam Result Sheet"):
             ('PADDING', (0,0), (-1,-1), 5),
         ]))
         elements.append(t)
+        
+        # Summary Total Section
+        elements.append(Spacer(1, 15))
+        summary_style = ParagraphStyle(
+            'PDFSummary', parent=styles['Normal'], fontName='Helvetica-Bold',
+            fontSize=11, textColor=colors.HexColor("#0f172a"), spaceAfter=5
+        )
+        elements.append(Paragraph(f"<b>Total Score Obtained:</b> {total_obtained_marks} / {total_max_marks}", summary_style))
+        if total_max_marks > 0:
+            percentage = (total_obtained_marks / total_max_marks) * 100
+            elements.append(Paragraph(f"<b>Overall Percentage:</b> {percentage:.2f}%", summary_style))
     else:
         elements.append(Paragraph("No records found.", styles['Normal']))
         
@@ -158,7 +222,6 @@ def setup_database():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 1. Teachers Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS teachers (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -167,10 +230,10 @@ def setup_database():
                 teacher_code VARCHAR(30) UNIQUE NOT NULL,
                 email VARCHAR(100) UNIQUE NOT NULL,
                 password VARCHAR(50) NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending'
+                status VARCHAR(20) DEFAULT 'pending',
+                approved_at DATETIME NULL
             )""")
 
-        # 2. Students Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS students (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -183,10 +246,10 @@ def setup_database():
                 userid VARCHAR(50) UNIQUE,
                 password VARCHAR(50),
                 seat_for_exam VARCHAR(10) DEFAULT 'yes',
-                status VARCHAR(20) DEFAULT 'pending'
+                status VARCHAR(20) DEFAULT 'pending',
+                approved_at DATETIME NULL
             )""")
 
-        # 3. Subjects Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subjects (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -195,7 +258,6 @@ def setup_database():
                 subject_name VARCHAR(100) NOT NULL
             )""")
 
-        # 4. Chapters Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS chapters (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -205,7 +267,6 @@ def setup_database():
                 chapter_name VARCHAR(100) NOT NULL
             )""")
 
-        # 5. Questions Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS questions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -219,7 +280,6 @@ def setup_database():
                 correct_option INT
             )""")
 
-        # 6. Exam Results Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS exam_results (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -235,21 +295,43 @@ def setup_database():
                 exam_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
 
-        # Schema Alterations
-        for table in ['students', 'subjects', 'chapters', 'questions', 'exam_results']:
-            cursor.execute(f"SHOW COLUMNS FROM {table}")
+        # Add approved_at columns if missing
+        for tbl in ['teachers', 'students']:
+            cursor.execute(f"SHOW COLUMNS FROM {tbl}")
             cols = [r['Field'] for r in cursor.fetchall()]
-            if 'teacher_id' not in cols and table != 'students':
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN teacher_id INT DEFAULT 1")
-            if table == 'students' and 'status' not in cols:
-                cursor.execute("ALTER TABLE students ADD COLUMN status VARCHAR(20) DEFAULT 'approved'")
+            if 'approved_at' not in cols:
+                cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN approved_at DATETIME NULL")
 
         conn.commit()
         conn.close()
     except Exception as e:
         st.error(f"Database Migration Error: {e}")
 
+# 60-Day Validity Expiry Check
+def check_60_days_validity():
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Change status to pending if approved > 60 days ago
+            cursor.execute("""
+                UPDATE students 
+                SET status = 'pending' 
+                WHERE status = 'approved' AND approved_at IS NOT NULL 
+                AND DATEDIFF(NOW(), approved_at) > 60
+            """)
+            cursor.execute("""
+                UPDATE teachers 
+                SET status = 'pending' 
+                WHERE status = 'approved' AND approved_at IS NOT NULL 
+                AND DATEDIFF(NOW(), approved_at) > 60
+            """)
+            conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
 setup_database()
+check_60_days_validity()
 
 # Helpers
 def generate_credentials(name):
@@ -259,6 +341,22 @@ def generate_credentials(name):
     chars = string.ascii_letters + string.digits
     password = "".join(random.choice(chars) for _ in range(6))
     return userid, password
+
+# Helper function to submit exam results
+def submit_student_exam(q_list, info):
+    score = sum(1 for idx, q in enumerate(q_list) if st.session_state.user_answers.get(idx) == q['correct'])
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        sql = """INSERT INTO exam_results 
+                 (teacher_id, student_id, class_name, roll_no, student_name, subject_name, chapter_name, score, total_questions)
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        cursor.execute(sql, (
+            info['teacher_id'], info['id'], info['class'], info['roll'], info['name'], 
+            info['sub'], info['chap'], score, len(q_list)
+        ))
+        conn.commit()
+    conn.close()
+    return score
 
 # ================= SIDEBAR NAVIGATION =================
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3429/3429149.png", width=90)
@@ -276,7 +374,6 @@ if menu == "📝 Student Portal":
     student_tab = st.radio("Select Action", ["📋 New Student Registration", "🔑 Login & Start Exam"], horizontal=True)
     st.divider()
 
-    # --- Student Registration ---
     if student_tab == "📋 New Student Registration":
         st.subheader("👤 Registration for Online Exams")
         
@@ -295,7 +392,7 @@ if menu == "📝 Student Portal":
             selected_t_str = st.selectbox(
                 "Select Administrator / Teacher *", 
                 list(teacher_map.keys()), 
-                help="আপনি যদি আপনার শিক্ষককে তালিকায় না পান, 'System Administrator' বেছে নিন। অ্যাডমিন আপনাকে শিক্ষক বরাদ্দ করে দেবেন।\n iF NO TEACHER IS IN YOUR CHOICE PLESE SELECT ADMINISTRATOR"
+                help="আপনি যদি আপনার শিক্ষককে তালিকায় না পান, 'System Administrator' বেছে নিন।"
             )
             col1, col2 = st.columns(2)
             with col1:
@@ -310,7 +407,7 @@ if menu == "📝 Student Portal":
 
         if submit_reg:
             if not (reg_name and reg_school and reg_address):
-                st.warning("⚠️ সমস্ত প্রয়োজনীয় বিবরণ পূরণ করুন!\n PLEASE FILL ALL INFORMATIONS")
+                st.warning("⚠️ সমস্ত প্রয়োজনীয় বিবরণ পূরণ করুন! / PLEASE FILL ALL INFORMATION")
             else:
                 teacher_id = teacher_map[selected_t_str]
                 userid, password = generate_credentials(reg_name)
@@ -325,20 +422,19 @@ if menu == "📝 Student Portal":
                         conn.commit()
                     conn.close()
                     
-                    st.success("🎉 রেজিস্ট্রেশন আবেদন জমা হয়েছে!\n YOUR APPLICATION IS SUBMITTED")
+                    st.success("🎉 রেজিস্ট্রেশন আবেদন জমা হয়েছে!")
                     st.markdown(f"""
                         <div class='cred-box'>
                             <h4>📌 আপনার পরীক্ষার লগইন ক্রিডেনশিয়াল:</h4>
                             <p><b>User ID:</b> <code>{userid}</code></p>
                             <p><b>Password:</b> <code>{password}</code></p>
                             <p><b>Assigned Teacher ID:</b> <code>{teacher_id if teacher_id else 'Pending Administrator Assignment'}</code></p>
-                            <small>⚠️ বিবরণটি লিখে রাখুন। অ্যাডমিন/শিক্ষক অ্যাকাউন্ট Approve করার পর আপনি পরীক্ষা দিতে পারবেন।\n Pleace send a requuest mail for approve. mailto:bhattacharyap72@gmail.com</small>
+                            <small>⚠️ বিবরণটি লিখে রাখুন। অ্যাকাউন্ট 60 দিনের জন্য অনুমোদিত হবে। Approval পেতে মেইল করুন: bhattacharyap72@gmail.com</small>
                         </div>
                     """, unsafe_allow_html=True)
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-    # --- Student Login & Exam ---
     elif student_tab == "🔑 Login & Start Exam":
         if "exam_started" not in st.session_state:
             st.session_state.exam_started = False
@@ -360,17 +456,16 @@ if menu == "📝 Student Portal":
                 if not student:
                     st.error("❌ ভুল User ID বা Password!")
                 elif student['status'] != 'approved':
-                    st.warning("⏳ আপনার অ্যাকাউন্টটি এখনো অনুমোদিত (Approve) হয়নি। অনুগ্রহ করে অপেক্ষা করুন।\nPending for approval")
+                    st.warning("⏳ আপনার অ্যাকাউন্টটি অনুমোদিত (Approve) নেই অথবা 60 দিন অতিক্রান্ত হওয়ার পর মেয়ার উত্তীর্ণ হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।")
                 elif not student['teacher_id']:
-                    st.warning("⚠️ আপনাকে এখনো কোনো শিক্ষক বরাদ্দ করা হয়নি! Super Admin শিক্ষক বরাদ্দ করার পর আপনি পরীক্ষা দিতে পারবেন।")
+                    st.warning("⚠️ আপনাকে এখনো কোনো শিক্ষক বরাদ্দ করা হয়নি!")
                 elif student['seat_for_exam'].lower() == 'no':
-                    st.error("🚫 আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disabled) রয়েছে।\n No Permission For Examination")
+                    st.error("🚫 আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disabled) রয়েছে।")
                 else:
                     st.session_state.logged_student = student
                     st.session_state.exam_ready = True
                     st.success(f"স্বাগতম, {student['name']}!")
 
-            # Subject & Chapter Selection
             if st.session_state.get("exam_ready", False):
                 st.divider()
                 st.subheader("📚 Select Exam Options")
@@ -399,7 +494,7 @@ if menu == "📝 Student Portal":
                     
                     stu_chap = st.selectbox("Select Chapter", ["All Chapters (Combined)"] + chapters)
 
-                if st.button("🚀 Start Exam Now", type="primary", use_container_width=True):
+                if st.button("🚀 Start Exam Now (Duration: 40 Minutes - Max 40 Questions)", type="primary", use_container_width=True):
                     conn = get_db_connection()
                     with conn.cursor() as cursor:
                         if stu_chap == "All Chapters (Combined)":
@@ -410,8 +505,14 @@ if menu == "📝 Student Portal":
                     conn.close()
 
                     if not raw_q:
-                        st.error("❌ এই বিষয়ে শিক্ষক কোনো প্রশ্ন যুক্ত করেননি!\nNo question for this teacher")
+                        st.error("❌ এই বিষয়ে শিক্ষক কোনো প্রশ্ন যুক্ত করেননি!")
                     else:
+                        # নিশ্চিত করা হচ্ছে যে সর্বোচ্চ ৪০টি প্রশ্নই র‍্যান্ডম হিসেবে আসবে, বেশি নয়
+                        if len(raw_q) > 40:
+                            raw_q = random.sample(raw_q, 40)
+                        else:
+                            random.shuffle(raw_q)
+
                         prepared_q = []
                         for q in raw_q:
                             opts = [q['option1'], q['option2'], q['option3'], q['option4']]
@@ -428,50 +529,50 @@ if menu == "📝 Student Portal":
                             'roll': stu['userid'], 'name': stu['name'], 'sub': stu_sub, 'chap': stu_chap
                         }
                         st.session_state.user_answers = {}
+                        st.session_state.exam_start_time = time.time()
                         st.session_state.exam_started = True
                         st.rerun()
 
         else:
-            # Active Exam Interface
+            # 40-MINUTE TIMER & EXAM INTERFACE (MAX 40 QUESTIONS)
             info = st.session_state.student_info
-            st.info(f"👤 **Student:** {info['name']} | **User ID:** {info['roll']} | **Subject:** {info['sub']}")
             q_list = st.session_state.prepared_questions
             
-            with st.form("exam_form"):
-                for idx, q in enumerate(q_list):
-                    st.markdown(f"#### Q{idx+1}. {q['text']}")
-                    if q['image']:
-                        try:
-                            st.image(q['image'], width=300)
-                        except: pass
-                    choice = st.radio(f"Select Option Q{idx+1}:", q['options'], index=None, key=f"q_{idx}")
-                    if choice:
-                        st.session_state.user_answers[idx] = q['options'].index(choice) + 1
-                    st.divider()
+            elapsed_time = time.time() - st.session_state.exam_start_time
+            total_duration = 40 * 60  # 40 Minutes in seconds
+            remaining_time = total_duration - elapsed_time
 
-                submitted = st.form_submit_button("📤 Submit Final Exam", type="primary", use_container_width=True)
-
-            if submitted:
-                score = sum(1 for idx, q in enumerate(q_list) if st.session_state.user_answers.get(idx) == q['correct'])
+            if remaining_time <= 0:
+                st.warning("⏰ 40 মিনিট সময় শেষ! আপনার উত্তরসমূহ স্বয়ংক্রিয়ভাবে জমা হচ্ছে...")
+                score = submit_student_exam(q_list, info)
+                st.session_state.exam_started = False
+                st.session_state.exam_ready = False
+                st.success(f"🎉 সময় সমাপ্তির কারণে উত্তর জমা নেওয়া হয়েছে। আপনার অর্জন: **{score} / {len(q_list)}**")
+            else:
+                mins, secs = divmod(int(remaining_time), 60)
+                st.markdown(f"<div class='timer-box'>⏳ অবশিষ্ট সময়: {mins:02d} minute(s) {secs:02d} second(s) (40 Mins Limit)</div>", unsafe_allow_html=True)
+                st.info(f"👤 **Student:** {info['name']} | **User ID:** {info['roll']} | **Subject:** {info['sub']} | **Total Questions:** {len(q_list)}")
                 
-                conn = get_db_connection()
-                with conn.cursor() as cursor:
-                    sql = """INSERT INTO exam_results 
-                             (teacher_id, student_id, class_name, roll_no, student_name, subject_name, chapter_name, score, total_questions)
-                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-                    cursor.execute(sql, (
-                        info['teacher_id'], info['id'], info['class'], info['roll'], info['name'], 
-                        info['sub'], info['chap'], score, len(q_list)
-                    ))
-                    conn.commit()
-                conn.close()
+                with st.form("exam_form"):
+                    for idx, q in enumerate(q_list):
+                        st.markdown(f"#### Q{idx+1}. {q['text']}")
+                        if q['image']:
+                            try:
+                                st.image(q['image'], width=300)
+                            except: pass
+                        choice = st.radio(f"Select Option Q{idx+1}:", q['options'], index=None, key=f"q_{idx}")
+                        if choice:
+                            st.session_state.user_answers[idx] = q['options'].index(choice) + 1
+                        st.divider()
 
-                st.balloons()
-                st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{score} / {len(q_list)}**")
-                if st.button("⬅️ Back to Portal"):
+                    submitted = st.form_submit_button("📤 Submit Final Exam", type="primary", use_container_width=True)
+
+                if submitted:
+                    score = submit_student_exam(q_list, info)
+                    st.balloons()
+                    st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{score} / {len(q_list)}**")
                     st.session_state.exam_started = False
                     st.session_state.exam_ready = False
-                    st.rerun()
 
 # ================= 2. TEACHER PORTAL =================
 elif menu == "👨‍🏫 Teacher Portal":
@@ -505,7 +606,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                             cursor.execute(sql, (t_name, t_inst, t_code, t_email, t_pwd))
                             conn.commit()
                         conn.close()
-                        st.success("🎉 রেজিস্ট্রেশন সম্পন্ন হয়েছে! Super Admin আপনার অ্যাকাউন্ট Approve করার পর আপনি অ্যাক্সেস পাবেন।\nYou will be allowed after approval of Administrator")
+                        st.success("🎉 রেজিস্ট্রেশন সম্পন্ন হয়েছে! অ্যাডমিন অনুমোদন করার পর আপনি 60 দিনের জন্য অ্যাক্সেস পাবেন।")
                     except Exception as e:
                         st.error(f"Error: {e}")
 
@@ -526,14 +627,13 @@ elif menu == "👨‍🏫 Teacher Portal":
                 if not teacher:
                     st.error("❌ ভুল লগইন তথ্য!")
                 elif teacher['status'] != 'approved':
-                    st.warning("⏳ আপনার শিক্ষক অ্যাকাউন্টটি Super Admin দ্বারা অনুমোদনের অপেক্ষায় রয়েছে।\n Your teacher is waiting for approval")
+                    st.warning("⏳ আপনার শিক্ষক অ্যাকাউন্টটি অনুমোদিত নয় অথবা 60 দিনের মেয়াদ শেষ হয়ে গেছে। অ্যাডমিনের অনুমতি প্রয়োজন।")
                 else:
                     st.session_state.logged_teacher = teacher
                     st.success(f"স্বাগতম, {teacher['teacher_name']} স্যার!")
                     st.rerun()
 
     else:
-        # LOGGED IN TEACHER DASHBOARD
         teacher = st.session_state.logged_teacher
         st.sidebar.markdown(f"**👨‍🏫 Logged Teacher:**\n{teacher['teacher_name']}\nID: `{teacher['id']}` | Code: `{teacher['teacher_code']}`")
         if st.sidebar.button("🚪 Teacher Logout"):
@@ -543,46 +643,41 @@ elif menu == "👨‍🏫 Teacher Portal":
         t_tab1, t_tab2, t_tab3, t_tab4 = st.tabs([
             "👥 Student Credentials & Management", 
             "📚 Subjects & Chapters", 
-            "➕ Question Bank", 
+            "➕ Question Bank & Edit", 
             "📊 Results & PDF Reports"
         ])
 
-        # TAB 1: STUDENT APPROVALS, CREDENTIALS & DELETE
         with t_tab1:
-            st.subheader("📋 Registered Students List (Usernames & Passwords)")
+            st.subheader("📋 Registered Students List")
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, teacher_id, name, class_name, school_name, userid, password, status, seat_for_exam 
+                    SELECT id, teacher_id, name, class_name, school_name, userid, password, status, seat_for_exam, approved_at 
                     FROM students WHERE teacher_id=%s""", (teacher['id'],))
                 stu_list = cursor.fetchall()
             conn.close()
 
             if stu_list:
                 st.dataframe(stu_list, use_container_width=True)
-                
                 st.divider()
                 col_x, col_y = st.columns(2)
                 with col_x:
-                    st.markdown("#### 1. Approve / Reject Student Registration")
-                    pending_stus = [s for s in stu_list if s['status'] == 'pending']
-                    if pending_stus:
-                        p_dict = {f"{s['name']} (Class: {s['class_name']} | User ID: {s['userid']})": s['id'] for s in pending_stus}
-                        sel_p = st.selectbox("Select Pending Student", list(p_dict.keys()))
-                        act_p = st.radio("Set Status:", ["approved", "rejected"], horizontal=True)
-                        if st.button("Update Registration Status"):
-                            conn = get_db_connection()
-                            with conn.cursor() as cursor:
-                                cursor.execute("UPDATE students SET status=%s WHERE id=%s", (act_p, p_dict[sel_p]))
-                                conn.commit()
-                            conn.close()
-                            st.success("✅ স্ট্যাটাস আপডেট করা হয়েছে\nYour status is updated")
-                            st.rerun()
-                    else:
-                        st.info("কোনো পেন্ডিং স্টুডেন্ট নেই।")
+                    st.markdown("#### Approve / Reject Student (60 Days Renewal)")
+                    p_dict = {f"{s['name']} (Class: {s['class_name']} | ID: {s['userid']}) - [{s['status']}]": s['id'] for s in stu_list}
+                    sel_p = st.selectbox("Select Student", list(p_dict.keys()))
+                    act_p = st.radio("Set Status (Approved valid for 60 Days):", ["approved", "rejected", "pending"], horizontal=True)
+                    if st.button("Update Registration Status"):
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            app_date = datetime.now() if act_p == 'approved' else None
+                            cursor.execute("UPDATE students SET status=%s, approved_at=%s WHERE id=%s", (act_p, app_date, p_dict[sel_p]))
+                            conn.commit()
+                        conn.close()
+                        st.success("✅ স্ট্যাটাস ও মেয়াদ আপডেট করা হয়েছে!")
+                        st.rerun()
 
                 with col_y:
-                    st.markdown("#### 2. Exam Access Control (`seat_for_exam`)")
+                    st.markdown("#### Exam Access Control (`seat_for_exam`)")
                     app_stus = [s for s in stu_list if s['status'] == 'approved']
                     if app_stus:
                         a_dict = {f"{s['name']} (ID: {s['userid']}) - Access: {s['seat_for_exam']}": s['id'] for s in app_stus}
@@ -594,10 +689,9 @@ elif menu == "👨‍🏫 Teacher Portal":
                                 cursor.execute("UPDATE students SET seat_for_exam=%s WHERE id=%s", (act_a, a_dict[sel_a]))
                                 conn.commit()
                             conn.close()
-                            st.success("✅ অ্যাক্সেস আপডেট করা হয়েছে!\nYour access has been updated")
+                            st.success("✅ অ্যাক্সেস আপডেট করা হয়েছে!")
                             st.rerun()
 
-                # 🔥 STUDENT DELETE SECTION FOR TEACHER 🔥
                 st.divider()
                 st.markdown("#### 🗑️ Delete Student Account")
                 del_s_map = {f"{s['name']} (Class: {s['class_name']} | ID: {s['userid']})": s['id'] for s in stu_list}
@@ -608,12 +702,11 @@ elif menu == "👨‍🏫 Teacher Portal":
                         cursor.execute("DELETE FROM students WHERE id=%s AND teacher_id=%s", (del_s_map[sel_del_s], teacher['id']))
                         conn.commit()
                     conn.close()
-                    st.success("🗑️ ছাত্রের তথ্য সফলভাবে মুছে ফেলা হয়েছে!")
+                    st.success("🗑️ ছাত্রের তথ্য ডিলিট করা হয়েছে!")
                     st.rerun()
             else:
-                st.info("আপনার অধীনে কোনো ছাত্র নিবন্ধিত নেই।There is no students registerd under your account")
+                st.info("আপনার অধীনে কোনো ছাত্র নিবন্ধিত নেই।")
 
-        # TAB 2: SUBJECTS & CHAPTERS
         with t_tab2:
             col_a, col_b = st.columns(2)
             with col_a:
@@ -650,9 +743,9 @@ elif menu == "👨‍🏫 Teacher Portal":
                         conn.close()
                         st.success("✅ চ্যাপ্টার সেভ হয়েছে!")
 
-        # TAB 3: QUESTION BANK
+        # TAB 3: QUESTION BANK & EDIT QUESTION
         with t_tab3:
-            q_mode = st.radio("Question Action", ["➕ Add New Question", "🗑️ Delete Question"], horizontal=True)
+            q_mode = st.radio("Question Action", ["➕ Add New Question", "✏️ View & Edit My Questions", "🗑️ Delete Question"], horizontal=True)
             st.divider()
 
             if q_mode == "➕ Add New Question":
@@ -705,7 +798,43 @@ elif menu == "👨‍🏫 Teacher Portal":
                             cursor.execute(sql, (teacher['id'], q_cls, q_sub, q_chap, q_text, img_url, opts[0], opts[1], opts[2], opts[3], corr_idx))
                             conn.commit()
                         conn.close()
-                        st.success("✅ প্রশ্ন সফলভাবে সংরক্ষণ করা হয়েছে!")
+                        st.success("✅ প্রশ্ন সেভ করা হয়েছে!")
+
+            elif q_mode == "✏️ View & Edit My Questions":
+                conn = get_db_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT * FROM questions WHERE teacher_id=%s ORDER BY id DESC", (teacher['id'],))
+                    my_questions = cursor.fetchall()
+                conn.close()
+
+                if my_questions:
+                    q_dict = {f"ID {q['id']} | [{q['class_name']} - {q['subject_name']}] : {q['question_text'][:50]}...": q for q in my_questions}
+                    sel_q_key = st.selectbox("Select Question to Edit", list(q_dict.keys()))
+                    selected_q = q_dict[sel_q_key]
+
+                    with st.form("edit_q_form"):
+                        st.subheader(f"Edit Question ID: {selected_q['id']}")
+                        e_text = st.text_area("Question Text", value=selected_q['question_text'])
+                        e_opt1 = st.text_input("Option 1", value=selected_q['option1'])
+                        e_opt2 = st.text_input("Option 2", value=selected_q['option2'])
+                        e_opt3 = st.text_input("Option 3", value=selected_q['option3'])
+                        e_opt4 = st.text_input("Option 4", value=selected_q['option4'])
+                        e_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_q['correct_option'])-1)
+
+                        if st.form_submit_button("Update Question", type="primary"):
+                            conn = get_db_connection()
+                            with conn.cursor() as cursor:
+                                cursor.execute("""
+                                    UPDATE questions 
+                                    SET question_text=%s, option1=%s, option2=%s, option3=%s, option4=%s, correct_option=%s 
+                                    WHERE id=%s AND teacher_id=%s
+                                """, (e_text, e_opt1, e_opt2, e_opt3, e_opt4, e_corr, selected_q['id'], teacher['id']))
+                                conn.commit()
+                            conn.close()
+                            st.success("✅ প্রশ্ন সফলভাবে আপডেট হয়েছে!")
+                            st.rerun()
+                else:
+                    st.info("আপনার তৈরি কোনো প্রশ্ন পাওয়া যায়নি।")
 
             elif q_mode == "🗑️ Delete Question":
                 del_cls = st.selectbox("Select Class", CLASSES, key="tdel_cls")
@@ -724,12 +853,11 @@ elif menu == "👨‍🏫 Teacher Portal":
                             cursor.execute("DELETE FROM questions WHERE id=%s", (q_dict[sel_q],))
                             conn.commit()
                         conn.close()
-                        st.success("🗑️ প্রশ্নটি সফলভাবে মুছে ফেলা হয়েছে!")
+                        st.success("🗑️ প্রশ্ন মুছে ফেলা হয়েছে!")
                         st.rerun()
 
-        # TAB 4: RESULTS & PDF REPORTS
         with t_tab4:
-            st.subheader("📊 Exam Performance & PDF Generation")
+            st.subheader("📊 Exam Performance & PDF Reports")
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 cursor.execute("""
@@ -742,14 +870,14 @@ elif menu == "👨‍🏫 Teacher Portal":
                 st.dataframe(t_results, use_container_width=True)
                 pdf_bytes = generate_pdf_report(t_results, title=f"Exam Results - {teacher['teacher_name']}")
                 st.download_button(
-                    label="📥 Download Teacher Batch Result Sheet (PDF)",
+                    label="📥 Download Teacher Batch Result Sheet (PDF with Total)",
                     data=pdf_bytes,
                     file_name=f"Results_{teacher['teacher_code']}.pdf",
                     mime="application/pdf",
                     type="primary"
                 )
             else:
-                st.info("আপনার ছাত্রদের কোনো পরীক্ষার রেজাল্ট এখনো পাওয়া যায়নি।")
+                st.info("কোনো রেজাল্ট পাওয়া যায়নি।")
 
 # ================= 3. VIEW RESULTS =================
 elif menu == "📊 View Student Results":
@@ -774,7 +902,7 @@ elif menu == "📊 View Student Results":
             if rows:
                 st.dataframe(rows, use_container_width=True)
                 pdf_data = generate_pdf_report(rows, title=f"Result Sheet - {rows[0]['student_name']} ({search_uid})")
-                st.download_button("📄 Download Individual PDF Result", data=pdf_data, file_name=f"Result_{search_uid}.pdf", mime="application/pdf")
+                st.download_button("📄 Download Individual PDF Result (With Total Marks)", data=pdf_data, file_name=f"Result_{search_uid}.pdf", mime="application/pdf")
             else:
                 st.warning("❌ কোনো ফলাফল পাওয়া যায়নি!")
 
@@ -787,25 +915,27 @@ elif menu == "👑 Super Admin Panel":
     if sa_pwd == SUPER_ADMIN_PASSWORD:
         st.success("🔑 Admin Access Granted")
         
-        admin_sub_tab1, admin_sub_tab2 = st.tabs(["👨‍🏫 Teachers Master Control", "🎓 All Students Master List & Teacher Assignment"])
+        admin_tab1, admin_tab2, admin_tab3 = st.tabs([
+            "👨‍🏫 Teachers Master Control", 
+            "🎓 All Students Master List", 
+            "📝 All Questions Master Control & Edit"
+        ])
 
-        # SUB-TAB 1: TEACHERS MASTER CONTROL & TEACHER DELETE
-        with admin_sub_tab1:
+        with admin_tab1:
             conn = get_db_connection()
             with conn.cursor() as cursor:
-                cursor.execute("SELECT id, teacher_name, institute_name, teacher_code, email, password, status FROM teachers")
+                cursor.execute("SELECT id, teacher_name, institute_name, teacher_code, email, password, status, approved_at FROM teachers")
                 all_teachers = cursor.fetchall()
             conn.close()
 
-            st.subheader("👨‍🏫 Registered Teachers Master List (ID & Passwords)")
+            st.subheader("👨‍🏫 Registered Teachers Master List")
             if all_teachers:
                 st.dataframe(all_teachers, use_container_width=True)
-                
                 st.divider()
                 col_t1, col_t2 = st.columns(2)
                 
                 with col_t1:
-                    st.subheader("🛡️ Approve / Block Teachers")
+                    st.subheader("🛡️ Approve / Block Teachers (60 Days Renewal)")
                     t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['email']}) - Status: {t['status']}": t['id'] for t in all_teachers}
                     sel_t = st.selectbox("Select Teacher Account", list(t_map.keys()))
                     new_t_status = st.radio("Account Permission:", ["approved", "blocked", "pending"], horizontal=True)
@@ -813,13 +943,13 @@ elif menu == "👑 Super Admin Panel":
                     if st.button("Update Teacher Authorization", type="primary"):
                         conn = get_db_connection()
                         with conn.cursor() as cursor:
-                            cursor.execute("UPDATE teachers SET status=%s WHERE id=%s", (new_t_status, t_map[sel_t]))
+                            app_date = datetime.now() if new_t_status == 'approved' else None
+                            cursor.execute("UPDATE teachers SET status=%s, approved_at=%s WHERE id=%s", (new_t_status, app_date, t_map[sel_t]))
                             conn.commit()
                         conn.close()
-                        st.success("✅ টিচারের স্ট্যাটাস আপডেট করা হয়েছে!\nYour status has been updated")
+                        st.success("✅ টিচারের স্ট্যাটাস ও মেয়াদ (60 Days) আপডেট করা হয়েছে!")
                         st.rerun()
 
-                # 🔥 TEACHER DELETE SECTION FOR ADMIN 🔥
                 with col_t2:
                     st.subheader("🗑️ Delete Teacher Account")
                     del_t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['teacher_code']})": t['id'] for t in all_teachers}
@@ -830,28 +960,18 @@ elif menu == "👑 Super Admin Panel":
                             cursor.execute("DELETE FROM teachers WHERE id=%s", (del_t_map[sel_del_t],))
                             conn.commit()
                         conn.close()
-                        st.success("🗑️ শিক্ষকের অ্যাকাউন্ট সফলভাবে মুছে ফেলা হয়েছে!")
+                        st.success("🗑️ টিচার মুছে ফেলা হয়েছে!")
                         st.rerun()
-            else:
-                st.info("সিস্টেমে কোনো টিচার রেজিস্টার্ড নেই।")
 
-        # SUB-TAB 2: ALL STUDENTS MASTER LIST, ASSIGNMENT & STUDENT DELETE
-        with admin_sub_tab2:
+        with admin_tab2:
             st.subheader("🎓 All Registered Students Master List")
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT 
-                        s.id AS student_id,
-                        s.teacher_id,
-                        t.teacher_name AS assigned_administrator,
-                        s.name AS student_name,
-                        s.class_name,
-                        s.school_name,
-                        s.userid AS username,
-                        s.password,
-                        s.status,
-                        s.seat_for_exam
+                        s.id AS student_id, s.teacher_id, t.teacher_name AS assigned_administrator,
+                        s.name AS student_name, s.class_name, s.school_name, s.userid AS username,
+                        s.password, s.status, s.seat_for_exam, s.approved_at
                     FROM students s
                     LEFT JOIN teachers t ON s.teacher_id = t.id
                     ORDER BY s.id DESC
@@ -863,77 +983,109 @@ elif menu == "👑 Super Admin Panel":
             conn.close()
 
             if all_students:
-                formatted_students = []
-                for s in all_students:
-                    s_copy = dict(s)
-                    if not s_copy['assigned_administrator']:
-                        s_copy['assigned_administrator'] = "⚠️ Unassigned (Registered under Admin)"
-                    formatted_students.append(s_copy)
-
-                st.dataframe(formatted_students, use_container_width=True)
-                
+                st.dataframe(all_students, use_container_width=True)
                 st.divider()
                 col_m1, col_m2 = st.columns(2)
 
-                # Feature A: Assign / Change Teacher for a Student
                 with col_m1:
-                    st.subheader("🔄 Assign / Re-assign Teacher to Student")
+                    st.subheader("🔄 Assign Teacher & Approve (60 Days)")
                     if approved_teachers_list:
-                        s_assign_map = {
-                            f"ID: {s['student_id']} | {s['student_name']} (User: {s['username']}) - Current: {s['assigned_administrator']}": s['student_id'] 
-                            for s in all_students
-                        }
-                        t_assign_map = {
-                            f"{t['teacher_name']} ({t['institute_name'] or 'Batch'}) - Code: {t['teacher_code']} (ID: {t['id']})": t['id'] 
-                            for t in approved_teachers_list
-                        }
+                        s_assign_map = {f"ID: {s['student_id']} | {s['student_name']} (User: {s['username']})": s['student_id'] for s in all_students}
+                        t_assign_map = {f"{t['teacher_name']} ({t['institute_name'] or 'Batch'}) - Code: {t['teacher_code']}": t['id'] for t in approved_teachers_list}
 
                         sel_s_for_t = st.selectbox("1. Select Student", list(s_assign_map.keys()))
                         sel_t_for_s = st.selectbox("2. Select Teacher to Assign", list(t_assign_map.keys()))
 
-                        if st.button("Assign Teacher", type="primary"):
+                        if st.button("Assign Teacher & Approve", type="primary"):
                             conn = get_db_connection()
                             with conn.cursor() as cursor:
                                 cursor.execute(
-                                    "UPDATE students SET teacher_id=%s, status='approved' WHERE id=%s", 
-                                    (t_assign_map[sel_t_for_s], s_assign_map[sel_s_for_t])
+                                    "UPDATE students SET teacher_id=%s, status='approved', approved_at=%s WHERE id=%s", 
+                                    (t_assign_map[sel_t_for_s], datetime.now(), s_assign_map[sel_s_for_t])
                                 )
                                 conn.commit()
                             conn.close()
-                            st.success("✅ শিক্ষার্থীকে শিক্ষক সফলভাবে বরাদ্দ করা হয়েছে এবং অ্যাকাউন্ট Approve হয়েছে!")
+                            st.success("✅ শিক্ষক বরাদ্দ এবং 60 দিনের মেয়াদে Approve করা হয়েছে!")
                             st.rerun()
-                    else:
-                        st.warning("⚠️ শিক্ষক বরাদ্দ করার জন্য কোনো 'Approved' শিক্ষক পাওয়া যায়নি। আগে শিক্ষক অনুমোদন করুন।\nPLEASE SELECT TEACHER")
 
-                # Feature B: Global Student Status Update & Delete
                 with col_m2:
                     st.subheader("🛡️ Global Student Status Update")
-                    s_map = {f"Student ID: {s['student_id']} | {s['student_name']} (Username: {s['username']})": s['student_id'] for s in all_students}
+                    s_map = {f"Student ID: {s['student_id']} | {s['student_name']}": s['student_id'] for s in all_students}
                     sel_s = st.selectbox("Select Student Account", list(s_map.keys()))
                     new_s_status = st.radio("Student Registration Status:", ["approved", "rejected", "pending"], horizontal=True, key="admin_stu_status")
                     
-                    if st.button("Update Student Status (Global)", type="primary"):
+                    if st.button("Update Student Status", type="primary"):
                         conn = get_db_connection()
                         with conn.cursor() as cursor:
-                            cursor.execute("UPDATE students SET status=%s WHERE id=%s", (new_s_status, s_map[sel_s]))
+                            app_date = datetime.now() if new_s_status == 'approved' else None
+                            cursor.execute("UPDATE students SET status=%s, approved_at=%s WHERE id=%s", (new_s_status, app_date, s_map[sel_s]))
                             conn.commit()
                         conn.close()
-                        st.success("✅ ছাত্র-ছাত্রীর স্ট্যাটাস আপডেট করা হয়েছে!")
+                        st.success("✅ ছাত্রের স্ট্যাটাস আপডেট করা হয়েছে!")
                         st.rerun()
 
-                # 🔥 STUDENT DELETE SECTION FOR ADMIN 🔥
                 st.divider()
                 st.subheader("🗑️ Delete Student Account (Global)")
-                del_admin_s_map = {f"Student ID: {s['student_id']} | {s['student_name']} (User: {s['username']})": s['student_id'] for s in all_students}
+                del_admin_s_map = {f"Student ID: {s['student_id']} | {s['student_name']}": s['student_id'] for s in all_students}
                 sel_del_admin_s = st.selectbox("Select Student to Delete", list(del_admin_s_map.keys()), key="admin_del_stu_select")
-                if st.button("🗑️ Delete Student Permanently (Admin)", type="primary"):
+                if st.button("🗑️ Delete Student Permanently", type="primary"):
                     conn = get_db_connection()
                     with conn.cursor() as cursor:
                         cursor.execute("DELETE FROM students WHERE id=%s", (del_admin_s_map[sel_del_admin_s],))
                         conn.commit()
                     conn.close()
-                    st.success("🗑️ ছাত্র-ছাত্রীর অ্যাকাউন্ট সফলভাবে ডিলিট করা হয়েছে!")
+                    st.success("🗑️ অ্যাকাউন্ট মুছে ফেলা হয়েছে!")
                     st.rerun()
 
+        # TAB 3: ADMIN ALL QUESTIONS MASTER VIEW & EDIT
+        with admin_tab3:
+            st.subheader("📝 Master Question Bank (View & Edit All Questions)")
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT q.*, t.teacher_name 
+                    FROM questions q 
+                    LEFT JOIN teachers t ON q.teacher_id = t.id 
+                    ORDER BY q.id DESC
+                """)
+                admin_all_q = cursor.fetchall()
+            conn.close()
+
+            if admin_all_q:
+                st.dataframe(admin_all_q, use_container_width=True)
+                st.divider()
+                
+                q_admin_dict = {f"Q-ID {q['id']} [Teacher: {q['teacher_name'] or 'Admin'}] [{q['class_name']}-{q['subject_name']}] : {q['question_text'][:50]}...": q for q in admin_all_q}
+                sel_admin_q_key = st.selectbox("Select Any Question to Edit / Modify", list(q_admin_dict.keys()))
+                selected_admin_q = q_admin_dict[sel_admin_q_key]
+
+                with st.form("admin_edit_q_form"):
+                    st.subheader(f"Admin Edit Question ID: {selected_admin_q['id']}")
+                    a_q_text = st.text_area("Question Text", value=selected_admin_q['question_text'])
+                    a_opt1 = st.text_input("Option 1", value=selected_admin_q['option1'])
+                    a_opt2 = st.text_input("Option 2", value=selected_admin_q['option2'])
+                    a_opt3 = st.text_input("Option 3", value=selected_admin_q['option3'])
+                    a_opt4 = st.text_input("Option 4", value=selected_admin_q['option4'])
+                    a_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_admin_q['correct_option'])-1)
+
+                    if st.form_submit_button("Update Question (Admin Overwrite)", type="primary"):
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("""
+                                UPDATE questions 
+                                SET question_text=%s, option1=%s, option2=%s, option3=%s, option4=%s, correct_option=%s 
+                                WHERE id=%s
+                            """, (a_q_text, a_opt1, a_opt2, a_opt3, a_opt4, a_corr, selected_admin_q['id']))
+                            conn.commit()
+                        conn.close()
+                        st.success("✅ প্রশ্ন সফলভাবে আপডেট করা হয়েছে!")
+                        st.rerun()
             else:
-                st.info("সিস্টেমে কোনো ছাত্র-ছাত্রী রেজিস্টার্ড নেই।")
+                st.info("কোনো প্রশ্ন যুক্ত করা নেই।")
+
+# ================= MAIN WINDOW FOOTER =================
+st.markdown("""
+    <div class="footer">
+        Created by <b>PARTHA PRATIM BHATTACHARYA</b> | Email: <a href="mailto:bhattacharyap72@gmail.com">bhattacharyap72@gmail.com</a>
+    </div>
+""", unsafe_allow_html=True)
