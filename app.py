@@ -276,7 +276,7 @@ if menu == "📝 Student Portal":
             selected_t_str = st.selectbox(
                 "Select Administrator / Teacher *", 
                 list(teacher_map.keys()), 
-                help="আপনি যদি আপনার শিক্ষককে তালিকায় না পান, 'System Administrator' বেছে নিন। অ্যাডমিন আপনাকে শিক্ষক বরাদ্দ করে দেবেন।"
+                help="আপনি যদি আপনার শিক্ষককে তালিকায় না পান, 'System Administrator' বেছে নিন। অ্যাডমিন আপনাকে শিক্ষক বরাদ্দ করে দেবেন।\N iF NO TEACHER IS IN YOUR CHOICE PLESE SELECT ADMINISTRATOR"
             )
             col1, col2 = st.columns(2)
             with col1:
@@ -291,7 +291,7 @@ if menu == "📝 Student Portal":
 
         if submit_reg:
             if not (reg_name and reg_school and reg_address):
-                st.warning("⚠️ সমস্ত প্রয়োজনীয় বিবরণ পূরণ করুন!")
+                st.warning("⚠️ সমস্ত প্রয়োজনীয় বিবরণ পূরণ করুন!\n PLEASE FILL ALL INFORMATIONS")
             else:
                 teacher_id = teacher_map[selected_t_str]
                 userid, password = generate_credentials(reg_name)
@@ -306,14 +306,14 @@ if menu == "📝 Student Portal":
                         conn.commit()
                     conn.close()
                     
-                    st.success("🎉 রেজিস্ট্রেশন আবেদন জমা হয়েছে!")
+                    st.success("🎉 রেজিস্ট্রেশন আবেদন জমা হয়েছে!\n YOUR APPLICATION IS SUBMITTED")
                     st.markdown(f"""
                         <div class='cred-box'>
                             <h4>📌 আপনার পরীক্ষার লগইন ক্রিডেনশিয়াল:</h4>
                             <p><b>User ID:</b> <code>{userid}</code></p>
                             <p><b>Password:</b> <code>{password}</code></p>
                             <p><b>Assigned Teacher ID:</b> <code>{teacher_id if teacher_id else 'Pending Administrator Assignment'}</code></p>
-                            <small>⚠️ বিবরণটি লিখে রাখুন। অ্যাডমিন/শিক্ষক অ্যাকাউন্ট Approve করার পর আপনি পরীক্ষা দিতে পারবেন।</small>
+                            <small>⚠️ বিবরণটি লিখে রাখুন। অ্যাডমিন/শিক্ষক অ্যাকাউন্ট Approve করার পর আপনি পরীক্ষা দিতে পারবেন।\n Pleace send a requuest mail for approve. mailto:bhattacharyap72@gmail.com</small>
                         </div>
                     """, unsafe_allow_html=True)
                 except Exception as e:
@@ -341,11 +341,11 @@ if menu == "📝 Student Portal":
                 if not student:
                     st.error("❌ ভুল User ID বা Password!")
                 elif student['status'] != 'approved':
-                    st.warning("⏳ আপনার অ্যাকাউন্টটি এখনো অনুমোদিত (Approve) হয়নি। অনুগ্রহ করে অপেক্ষা করুন।")
+                    st.warning("⏳ আপনার অ্যাকাউন্টটি এখনো অনুমোদিত (Approve) হয়নি। অনুগ্রহ করে অপেক্ষা করুন।\nPending for approval")
                 elif not student['teacher_id']:
                     st.warning("⚠️ আপনাকে এখনো কোনো শিক্ষক বরাদ্দ করা হয়নি! Super Admin শিক্ষক বরাদ্দ করার পর আপনি পরীক্ষা দিতে পারবেন।")
                 elif student['seat_for_exam'].lower() == 'no':
-                    st.error("🚫 আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disabled) রয়েছে।")
+                    st.error("🚫 আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disabled) রয়েছে।\No Permission For Examination")
                 else:
                     st.session_state.logged_student = student
                     st.session_state.exam_ready = True
@@ -391,7 +391,7 @@ if menu == "📝 Student Portal":
                     conn.close()
 
                     if not raw_q:
-                        st.error("❌ এই বিষয়ে শিক্ষক কোনো প্রশ্ন যুক্ত করেননি!")
+                        st.error("❌ এই বিষয়ে শিক্ষক কোনো প্রশ্ন যুক্ত করেননি!\nNo question for this teacher")
                     else:
                         prepared_q = []
                         for q in raw_q:
@@ -486,7 +486,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                             cursor.execute(sql, (t_name, t_inst, t_code, t_email, t_pwd))
                             conn.commit()
                         conn.close()
-                        st.success("🎉 রেজিস্ট্রেশন সম্পন্ন হয়েছে! Super Admin আপনার অ্যাকাউন্ট Approve করার পর আপনি অ্যাক্সেস পাবেন।")
+                        st.success("🎉 রেজিস্ট্রেশন সম্পন্ন হয়েছে! Super Admin আপনার অ্যাকাউন্ট Approve করার পর আপনি অ্যাক্সেস পাবেন।\nYou will be allowed after approval of Administrator")
                     except Exception as e:
                         st.error(f"Error: {e}")
 
@@ -507,7 +507,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                 if not teacher:
                     st.error("❌ ভুল লগইন তথ্য!")
                 elif teacher['status'] != 'approved':
-                    st.warning("⏳ আপনার শিক্ষক অ্যাকাউন্টটি Super Admin দ্বারা অনুমোদনের অপেক্ষায় রয়েছে।")
+                    st.warning("⏳ আপনার শিক্ষক অ্যাকাউন্টটি Super Admin দ্বারা অনুমোদনের অপেক্ষায় রয়েছে।\n Your teacher is waiting for approval")
                 else:
                     st.session_state.logged_teacher = teacher
                     st.success(f"স্বাগতম, {teacher['teacher_name']} স্যার!")
@@ -557,7 +557,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                                 cursor.execute("UPDATE students SET status=%s WHERE id=%s", (act_p, p_dict[sel_p]))
                                 conn.commit()
                             conn.close()
-                            st.success("✅ স্ট্যাটাস আপডেট করা হয়েছে!")
+                            st.success("✅ স্ট্যাটাস আপডেট করা হয়েছে\nYour status is updated")
                             st.rerun()
                     else:
                         st.info("কোনো পেন্ডিং স্টুডেন্ট নেই।")
@@ -575,10 +575,10 @@ elif menu == "👨‍🏫 Teacher Portal":
                                 cursor.execute("UPDATE students SET seat_for_exam=%s WHERE id=%s", (act_a, a_dict[sel_a]))
                                 conn.commit()
                             conn.close()
-                            st.success("✅ অ্যাক্সেস আপডেট করা হয়েছে!")
+                            st.success("✅ অ্যাক্সেস আপডেট করা হয়েছে!\nYour access has been updated")
                             st.rerun()
             else:
-                st.info("আপনার অধীনে কোনো ছাত্র নিবন্ধিত নেই।")
+                st.info("আপনার অধীনে কোনো ছাত্র নিবন্ধিত নেই।There is no students registerd under your account")
 
         # TAB 2: SUBJECTS & CHAPTERS
         with t_tab2:
@@ -780,7 +780,7 @@ elif menu == "👑 Super Admin Panel":
                         cursor.execute("UPDATE teachers SET status=%s WHERE id=%s", (new_t_status, t_map[sel_t]))
                         conn.commit()
                     conn.close()
-                    st.success("✅ টিচারের স্ট্যাটাস আপডেট করা হয়েছে!")
+                    st.success("✅ টিচারের স্ট্যাটাস আপডেট করা হয়েছে!\nYour status has been updated")
                     st.rerun()
             else:
                 st.info("সিস্টেমে কোনো টিচার রেজিস্টার্ড নেই।")
@@ -855,7 +855,7 @@ elif menu == "👑 Super Admin Panel":
                             st.success("✅ শিক্ষার্থীকে শিক্ষক সফলভাবে বরাদ্দ করা হয়েছে এবং অ্যাকাউন্ট Approve হয়েছে!")
                             st.rerun()
                     else:
-                        st.warning("⚠️ শিক্ষক বরাদ্দ করার জন্য কোনো 'Approved' শিক্ষক পাওয়া যায়নি। আগে শিক্ষক অনুমোদন করুন।")
+                        st.warning("⚠️ শিক্ষক বরাদ্দ করার জন্য কোনো 'Approved' শিক্ষক পাওয়া যায়নি। আগে শিক্ষক অনুমোদন করুন।\nPLEASE SELECT TEACHER")
 
                 # Feature B: Global Student Status Update
                 with col_m2:
