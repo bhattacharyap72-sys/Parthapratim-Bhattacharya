@@ -5,6 +5,13 @@ import random
 import string
 import base64
 from datetime import date
+from io import BytesIO
+
+# --- ReportLab Imports for PDF Generation ---
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -14,35 +21,80 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= CUSTOM CSS FOR BETTER UI =================
+# ================= DARK THEME & CUSTOM CSS =================
 st.markdown("""
     <style>
-    .main {
-        background-color: #f8f9fa;
+    /* Dark Background for Main App */
+    .stApp, .main {
+        background-color: #0e1117 !important;
+        color: #e0e0e0 !important;
     }
-    h1, h2, h3 {
-        color: #1e3a8a;
+    
+    /* Headers Styling */
+    h1, h2, h3, h4, h5, h6 {
+        color: #60a5fa !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
+    
+    /* Text Input, Selectbox, Text Area Dark Styling */
+    .stTextInput>div>div>input, 
+    .stSelectbox>div>div>div, 
+    .stTextArea>div>div>textarea,
+    .stDateInput>div>div>input {
+        background-color: #1f2937 !important;
+        color: #ffffff !important;
+        border: 1px solid #374151 !important;
+        border-radius: 6px;
+    }
+    
+    /* Buttons Styling */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        border: none !important;
         transition: all 0.3s ease;
     }
+    .stButton>button:hover {
+        background-color: #1d4ed8 !important;
+    }
+    
+    /* Dark Custom Banner */
     .banner {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-        color: white;
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+        color: #ffffff;
         padding: 25px;
         border-radius: 12px;
         text-align: center;
         margin-bottom: 25px;
+        border: 1px solid #1e40af;
     }
+    
+    /* Dark Credentials Card */
     .cred-box {
-        background-color: #e0f2fe;
-        border-left: 6px solid #0284c7;
+        background-color: #1e293b;
+        border-left: 6px solid #38bdf8;
         padding: 15px;
         border-radius: 8px;
         margin-top: 15px;
+        color: #f1f5f9;
+    }
+    
+    /* Card for Questions */
+    .question-card {
+        background-color: #1f2937;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        margin-bottom: 20px;
+        border-left: 5px solid #3b82f6;
+    }
+    
+    /* Dataframe Dark Mode */
+    [data-testid="stDataFrame"] {
+        background-color: #1f2937 !important;
+        border-radius: 8px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -62,13 +114,64 @@ ADMIN_PASSWORD = "admin"
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
 
+# ================= PDF GENERATOR FUNCTION =================
+def generate_pdf_report(data_rows, title="Online Exam Result Sheet"):
+    """Generates a downloadable PDF binary stream from database rows."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'PDFTitle',
+        parent=styles['Heading1'],
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        textColor=colors.HexColor("#1e3a8a"),
+        spaceAfter=15,
+        alignment=1 # Center
+    )
+    
+    elements.append(Paragraph(title, title_style))
+    elements.append(Spacer(1, 10))
+    
+    if data_rows:
+        # Table Header
+        headers = list(data_rows[0].keys())
+        table_data = [[str(h).replace('_', ' ').title() for h in headers]]
+        
+        # Table Data
+        for row in data_rows:
+            table_data.append([str(row[h]) if row[h] is not None else "" for h in headers])
+            
+        t = Table(table_data)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1e3a8a")),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 10),
+            ('BOTTOMPADDING', (0,0), (-1,0), 8),
+            ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#f8fafc")),
+            ('TEXTCOLOR', (0,1), (-1,-1), colors.black),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ('FONTSIZE', (0,1), (-1,-1), 9),
+            ('PADDING', (0,0), (-1,-1), 6),
+        ]))
+        elements.append(t)
+    else:
+        elements.append(Paragraph("No exam records found.", styles['Normal']))
+        
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 # ================= AUTO SETUP DATABASE TABLES =================
 def setup_database():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Create/Update Students Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS students (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,7 +185,6 @@ def setup_database():
                 seat_for_exam VARCHAR(10) DEFAULT 'yes'
             )""")
         
-        # Ensure older databases get newly added columns safely
         existing_cols = []
         cursor.execute("SHOW COLUMNS FROM students")
         existing_cols = [row['Field'] for row in cursor.fetchall()]
@@ -107,7 +209,7 @@ def setup_database():
 
 setup_database()
 
-# Helper function to generate Unique Credentials
+# Helper function to generate Credentials
 def generate_credentials(name):
     clean_name = "".join(e for e in name if e.isalnum()).lower()[:4]
     rand_num = random.randint(1000, 9999)
@@ -226,7 +328,7 @@ if menu == "📝 Student Portal":
                         st.session_state.exam_ready = True
                         st.success(f"স্বাগতম, {student['name']}! আপনার অ্যাকাউন্ট অনুমোদিত হয়েছে।")
 
-            # Subject & Chapter Selection post login
+            # Subject & Chapter Selection
             if st.session_state.get("exam_ready", False):
                 st.divider()
                 st.subheader("📚 Select Exam Details")
@@ -295,7 +397,7 @@ if menu == "📝 Student Portal":
                         st.rerun()
 
         else:
-            # Candidate Exam Paper Interface
+            # Candidate Exam Interface
             info = st.session_state.student_info
             st.info(f"👤 **Student:** {info['name']} | **User ID:** {info['roll']} | **Class:** {info['class']} | **Subject:** {info['sub']}")
             
@@ -343,28 +445,80 @@ if menu == "📝 Student Portal":
                     st.session_state.exam_ready = False
                     st.rerun()
 
-# ---------- 2. VIEW RESULTS ----------
+# ---------- 2. VIEW RESULTS & PDF DOWNLOAD ----------
 elif menu == "📊 View Results":
     st.markdown("<div class='banner'><h2>📊 Student Assessment Results</h2></div>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        res_cls = st.selectbox("Class", CLASSES)
-    with col2:
-        res_uid = st.text_input("Enter Student User ID")
+    res_mode = st.radio("Select View Mode", ["👤 Individual Student Result", "📋 Total / All Students Results"], horizontal=True)
+    st.divider()
 
-    if st.button("🔍 Search Performance Record", use_container_width=True):
-        if res_uid:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT student_name, subject_name, chapter_name, score, total_questions, exam_date FROM exam_results WHERE class_name=%s AND roll_no=%s", (res_cls, res_uid))
-                rows = cursor.fetchall()
-            conn.close()
+    # --- 1. INDIVIDUAL STUDENT RESULT ---
+    if res_mode == "👤 Individual Student Result":
+        col1, col2 = st.columns(2)
+        with col1:
+            res_cls = st.selectbox("Class", CLASSES)
+        with col2:
+            res_uid = st.text_input("Enter Student User ID")
 
-            if rows:
-                st.dataframe(rows, use_container_width=True)
+        if st.button("🔍 Search Performance Record", use_container_width=True):
+            if res_uid:
+                conn = get_db_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT student_name, roll_no AS user_id, class_name, subject_name, chapter_name, score, total_questions, exam_date 
+                        FROM exam_results 
+                        WHERE class_name=%s AND roll_no=%s""", (res_cls, res_uid))
+                    rows = cursor.fetchall()
+                conn.close()
+
+                if rows:
+                    st.dataframe(rows, use_container_width=True)
+                    
+                    # Generate PDF for Individual Student
+                    pdf_data = generate_pdf_report(rows, title=f"Exam Result - {rows[0]['student_name']} ({res_uid})")
+                    st.download_button(
+                        label="📄 Download Student Result (PDF)",
+                        data=pdf_data,
+                        file_name=f"Result_{res_uid}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("❌ কোনো ফলাফল পাওয়া যায়নি!")
+
+    # --- 2. TOTAL / ALL STUDENTS RESULTS ---
+    else:
+        st.subheader("📋 Overall Assessment Summary")
+        filter_cls = st.selectbox("Filter by Class (Optional)", ["All Classes"] + CLASSES)
+        
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            if filter_cls == "All Classes":
+                cursor.execute("""
+                    SELECT student_name, roll_no AS user_id, class_name, subject_name, chapter_name, score, total_questions, exam_date 
+                    FROM exam_results ORDER BY exam_date DESC""")
             else:
-                st.warning("❌ কোনো ফলাফল পাওয়া যায়নি!")
+                cursor.execute("""
+                    SELECT student_name, roll_no AS user_id, class_name, subject_name, chapter_name, score, total_questions, exam_date 
+                    FROM exam_results WHERE class_name=%s ORDER BY exam_date DESC""", (filter_cls,))
+            all_rows = cursor.fetchall()
+        conn.close()
+
+        if all_rows:
+            st.dataframe(all_rows, use_container_width=True)
+            
+            # Generate PDF for Total Results
+            pdf_all_data = generate_pdf_report(all_rows, title=f"All Exam Results Report ({filter_cls})")
+            st.download_button(
+                label="📥 Download Total Results Report (PDF)",
+                data=pdf_all_data,
+                file_name=f"Total_Exam_Results_{filter_cls.replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True
+            )
+        else:
+            st.info("কোনো পরীক্ষার ফলাফল ডাটাবেসে পাওয়া যায়নি।")
 
 # ---------- 3. ADMIN PANEL ----------
 elif menu == "⚙️ Admin Panel":
@@ -390,6 +544,15 @@ elif menu == "⚙️ Admin Panel":
 
             if students_data:
                 st.dataframe(students_data, use_container_width=True)
+                
+                # Download Registered Students PDF
+                students_pdf = generate_pdf_report(students_data, title="Registered Students Master List")
+                st.download_button(
+                    label="📥 Download Registered Students List (PDF)",
+                    data=students_pdf,
+                    file_name="Registered_Students_List.pdf",
+                    mime="application/pdf"
+                )
                 
                 st.divider()
                 st.subheader("🚫 Modify Student Exam Permission (`seat_for_exam`)")
