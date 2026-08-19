@@ -22,6 +22,7 @@ st.set_page_config(
 )
 
 # ================= DARK THEME & CUSTOM CSS =================
+# ================= DARK THEME & CUSTOM CSS =================
 st.markdown("""
     <style>
     .stApp, .main {
@@ -32,20 +33,34 @@ st.markdown("""
         color: #60a5fa !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
+    
+    /* General Input, Select, and Date Elements */
     .stTextInput>div>div>input, 
     .stSelectbox>div>div>div, 
-    .stTextArea>div>div>textarea {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border: 1px solid #374151 !important;
-        border-radius: 6px;
-    }
     .stDateInput>div>div>input {
         background-color: #1f2937 !important;
         color: #ffffff !important;
         border: 1px solid #374151 !important;
         border-radius: 6px;
     }
+    
+    /* 💥 STUDENT ADDRESS (TEXTAREA) - PURE BLACK FIX 💥 */
+    div[data-baseweb="textarea"],
+    div[data-baseweb="textarea"] > textarea,
+    .stTextArea textarea {
+        background-color: #000000 !important;
+        color: #ffffff !important;
+        border: 1px solid #374151 !important;
+        border-radius: 6px !important;
+    }
+
+    /* Textarea Focus Effect (ক্লিক করলে বর্ডার হাইলাইট হবে) */
+    div[data-baseweb="textarea"]:focus-within {
+        border-color: #2563eb !important;
+        box-shadow: 0 0 0 1px #2563eb !important;
+    }
+
+    /* Buttons */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
@@ -57,6 +72,8 @@ st.markdown("""
     .stButton>button:hover {
         background-color: #1d4ed8 !important;
     }
+    
+    /* Custom Containers */
     .banner {
         background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
         color: #ffffff;
