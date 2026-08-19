@@ -86,7 +86,7 @@ DB_CONFIG = {
 }
 
 CLASSES = ['Class V', 'Class VI', 'Class VII', 'Class VIII', 'Class IX', 'Class X', 'Class XI', 'Class XII']
-SUPER_ADMIN_PASSWORD = "admin"
+SUPER_ADMIN_PASSWORD = "M@m0ni4thjune"
 
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
