@@ -22,7 +22,6 @@ st.set_page_config(
 )
 
 # ================= DARK THEME & CUSTOM CSS =================
-# ================= DARK THEME & CUSTOM CSS =================
 st.markdown("""
     <style>
     .stApp, .main {
@@ -44,7 +43,7 @@ st.markdown("""
         border-radius: 6px;
     }
     
-    /* 💥 STUDENT ADDRESS (TEXTAREA) - PURE BLACK FIX 💥 */
+    /* STUDENT ADDRESS (TEXTAREA) */
     div[data-baseweb="textarea"],
     div[data-baseweb="textarea"] > textarea,
     .stTextArea textarea {
@@ -54,7 +53,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* Textarea Focus Effect (ক্লিক করলে বর্ডার হাইলাইট হবে) */
+    /* Textarea Focus Effect */
     div[data-baseweb="textarea"]:focus-within {
         border-color: #2563eb !important;
         box-shadow: 0 0 0 1px #2563eb !important;
@@ -171,7 +170,7 @@ def setup_database():
                 status VARCHAR(20) DEFAULT 'pending'
             )""")
 
-        # 2. Students Table (teacher_id updated to allow NULL / 0 for unassigned status)
+        # 2. Students Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS students (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -236,7 +235,7 @@ def setup_database():
                 exam_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
 
-        # Dynamic Schema Alterations for legacy safety
+        # Schema Alterations
         for table in ['students', 'subjects', 'chapters', 'questions', 'exam_results']:
             cursor.execute(f"SHOW COLUMNS FROM {table}")
             cols = [r['Field'] for r in cursor.fetchall()]
@@ -281,14 +280,12 @@ if menu == "📝 Student Portal":
     if student_tab == "📋 New Student Registration":
         st.subheader("👤 Registration for Online Exams")
         
-        # Fetch Approved Administrators / Teachers
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute("SELECT id, teacher_name, institute_name, teacher_code FROM teachers WHERE status='approved'")
             approved_teachers = cursor.fetchall()
         conn.close()
 
-        # Build Teacher Options including Administrator option
         teacher_map = {"🏛️ System Administrator (Assign Teacher Later)": None}
         for t in approved_teachers:
             label = f"{t['teacher_name']} ({t['institute_name'] or 'Private Batch'}) - Code: {t['teacher_code']}"
@@ -544,13 +541,13 @@ elif menu == "👨‍🏫 Teacher Portal":
             st.rerun()
 
         t_tab1, t_tab2, t_tab3, t_tab4 = st.tabs([
-            "👥 Student Credentials & Approvals", 
+            "👥 Student Credentials & Management", 
             "📚 Subjects & Chapters", 
             "➕ Question Bank", 
             "📊 Results & PDF Reports"
         ])
 
-        # TAB 1: STUDENT APPROVALS & CREDENTIALS
+        # TAB 1: STUDENT APPROVALS, CREDENTIALS & DELETE
         with t_tab1:
             st.subheader("📋 Registered Students List (Usernames & Passwords)")
             conn = get_db_connection()
@@ -599,6 +596,20 @@ elif menu == "👨‍🏫 Teacher Portal":
                             conn.close()
                             st.success("✅ অ্যাক্সেস আপডেট করা হয়েছে!\nYour access has been updated")
                             st.rerun()
+
+                # 🔥 STUDENT DELETE SECTION FOR TEACHER 🔥
+                st.divider()
+                st.markdown("#### 🗑️ Delete Student Account")
+                del_s_map = {f"{s['name']} (Class: {s['class_name']} | ID: {s['userid']})": s['id'] for s in stu_list}
+                sel_del_s = st.selectbox("Select Student to Delete", list(del_s_map.keys()), key="t_del_stu_select")
+                if st.button("🗑️ Delete Student Permanently", type="primary"):
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
+                        cursor.execute("DELETE FROM students WHERE id=%s AND teacher_id=%s", (del_s_map[sel_del_s], teacher['id']))
+                        conn.commit()
+                    conn.close()
+                    st.success("🗑️ ছাত্রের তথ্য সফলভাবে মুছে ফেলা হয়েছে!")
+                    st.rerun()
             else:
                 st.info("আপনার অধীনে কোনো ছাত্র নিবন্ধিত নেই।There is no students registerd under your account")
 
@@ -778,7 +789,7 @@ elif menu == "👑 Super Admin Panel":
         
         admin_sub_tab1, admin_sub_tab2 = st.tabs(["👨‍🏫 Teachers Master Control", "🎓 All Students Master List & Teacher Assignment"])
 
-        # SUB-TAB 1: TEACHERS MASTER CONTROL
+        # SUB-TAB 1: TEACHERS MASTER CONTROL & TEACHER DELETE
         with admin_sub_tab1:
             conn = get_db_connection()
             with conn.cursor() as cursor:
@@ -791,23 +802,40 @@ elif menu == "👑 Super Admin Panel":
                 st.dataframe(all_teachers, use_container_width=True)
                 
                 st.divider()
-                st.subheader("🛡️ Approve / Block Teachers")
-                t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['email']}) - Status: {t['status']}": t['id'] for t in all_teachers}
-                sel_t = st.selectbox("Select Teacher Account", list(t_map.keys()))
-                new_t_status = st.radio("Account Permission:", ["approved", "blocked", "pending"], horizontal=True)
+                col_t1, col_t2 = st.columns(2)
+                
+                with col_t1:
+                    st.subheader("🛡️ Approve / Block Teachers")
+                    t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['email']}) - Status: {t['status']}": t['id'] for t in all_teachers}
+                    sel_t = st.selectbox("Select Teacher Account", list(t_map.keys()))
+                    new_t_status = st.radio("Account Permission:", ["approved", "blocked", "pending"], horizontal=True)
 
-                if st.button("Update Teacher Authorization", type="primary"):
-                    conn = get_db_connection()
-                    with conn.cursor() as cursor:
-                        cursor.execute("UPDATE teachers SET status=%s WHERE id=%s", (new_t_status, t_map[sel_t]))
-                        conn.commit()
-                    conn.close()
-                    st.success("✅ টিচারের স্ট্যাটাস আপডেট করা হয়েছে!\nYour status has been updated")
-                    st.rerun()
+                    if st.button("Update Teacher Authorization", type="primary"):
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("UPDATE teachers SET status=%s WHERE id=%s", (new_t_status, t_map[sel_t]))
+                            conn.commit()
+                        conn.close()
+                        st.success("✅ টিচারের স্ট্যাটাস আপডেট করা হয়েছে!\nYour status has been updated")
+                        st.rerun()
+
+                # 🔥 TEACHER DELETE SECTION FOR ADMIN 🔥
+                with col_t2:
+                    st.subheader("🗑️ Delete Teacher Account")
+                    del_t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['teacher_code']})": t['id'] for t in all_teachers}
+                    sel_del_t = st.selectbox("Select Teacher to Delete", list(del_t_map.keys()), key="admin_del_t_select")
+                    if st.button("🗑️ Delete Teacher Permanently", type="primary"):
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("DELETE FROM teachers WHERE id=%s", (del_t_map[sel_del_t],))
+                            conn.commit()
+                        conn.close()
+                        st.success("🗑️ শিক্ষকের অ্যাকাউন্ট সফলভাবে মুছে ফেলা হয়েছে!")
+                        st.rerun()
             else:
                 st.info("সিস্টেমে কোনো টিচার রেজিস্টার্ড নেই।")
 
-        # SUB-TAB 2: ALL STUDENTS MASTER LIST & TEACHER ASSIGNMENT
+        # SUB-TAB 2: ALL STUDENTS MASTER LIST, ASSIGNMENT & STUDENT DELETE
         with admin_sub_tab2:
             st.subheader("🎓 All Registered Students Master List")
             conn = get_db_connection()
@@ -830,13 +858,11 @@ elif menu == "👑 Super Admin Panel":
                 """)
                 all_students = cursor.fetchall()
                 
-                # Fetch all approved teachers for assignment option
                 cursor.execute("SELECT id, teacher_name, teacher_code, institute_name FROM teachers WHERE status='approved'")
                 approved_teachers_list = cursor.fetchall()
             conn.close()
 
             if all_students:
-                # Format output for better readability in DataFrame
                 formatted_students = []
                 for s in all_students:
                     s_copy = dict(s)
@@ -879,7 +905,7 @@ elif menu == "👑 Super Admin Panel":
                     else:
                         st.warning("⚠️ শিক্ষক বরাদ্দ করার জন্য কোনো 'Approved' শিক্ষক পাওয়া যায়নি। আগে শিক্ষক অনুমোদন করুন।\nPLEASE SELECT TEACHER")
 
-                # Feature B: Global Student Status Update
+                # Feature B: Global Student Status Update & Delete
                 with col_m2:
                     st.subheader("🛡️ Global Student Status Update")
                     s_map = {f"Student ID: {s['student_id']} | {s['student_name']} (Username: {s['username']})": s['student_id'] for s in all_students}
@@ -894,5 +920,20 @@ elif menu == "👑 Super Admin Panel":
                         conn.close()
                         st.success("✅ ছাত্র-ছাত্রীর স্ট্যাটাস আপডেট করা হয়েছে!")
                         st.rerun()
+
+                # 🔥 STUDENT DELETE SECTION FOR ADMIN 🔥
+                st.divider()
+                st.subheader("🗑️ Delete Student Account (Global)")
+                del_admin_s_map = {f"Student ID: {s['student_id']} | {s['student_name']} (User: {s['username']})": s['student_id'] for s in all_students}
+                sel_del_admin_s = st.selectbox("Select Student to Delete", list(del_admin_s_map.keys()), key="admin_del_stu_select")
+                if st.button("🗑️ Delete Student Permanently (Admin)", type="primary"):
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
+                        cursor.execute("DELETE FROM students WHERE id=%s", (del_admin_s_map[sel_del_admin_s],))
+                        conn.commit()
+                    conn.close()
+                    st.success("🗑️ ছাত্র-ছাত্রীর অ্যাকাউন্ট সফলভাবে ডিলিট করা হয়েছে!")
+                    st.rerun()
+
             else:
                 st.info("সিস্টেমে কোনো ছাত্র-ছাত্রী রেজিস্টার্ড নেই।")
