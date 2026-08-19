@@ -30,6 +30,12 @@ st.markdown("""
         background-color: #0b0f19 !important;
         color: #f3f4f6 !important;
     }
+
+    /* Sidebar Radio Button Label Text Color (Custom CSS Added) */
+    section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] p {
+        color: #60a5fa !important;
+        font-weight: bold !important;
+    }
     
     /* High Contrast Headers */
     h1, h2, h3, h4, h5, h6 {
@@ -37,11 +43,6 @@ st.markdown("""
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         font-weight: 700 !important;
     }
-    /* Sidebar Radio Button Label Text Color */
-section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] p {
-    color: #60a5fa !important; /* এখানে আপনার পছন্দমতো কালার কোড দিতে পারেন */
-    font-weight: bold !important;
-}
 
     /* Labels - High Contrast White */
     label, div[data-testid="stMarkdownContainer"] p {
@@ -162,7 +163,7 @@ SUPER_ADMIN_PASSWORD = "M@m0ni4thjune"
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
 
-# ================= PDF GENERATOR (WITH TOTAL MARKS) =================
+# ================= PDF GENERATOR (SUMMARY SHEET) =================
 def generate_pdf_report(data_rows, title="Exam Result Sheet"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -204,7 +205,6 @@ def generate_pdf_report(data_rows, title="Exam Result Sheet"):
         ]))
         elements.append(t)
         
-        # Summary Total Section
         elements.append(Spacer(1, 15))
         summary_style = ParagraphStyle(
             'PDFSummary', parent=styles['Normal'], fontName='Helvetica-Bold',
@@ -217,6 +217,103 @@ def generate_pdf_report(data_rows, title="Exam Result Sheet"):
     else:
         elements.append(Paragraph("No records found.", styles['Normal']))
         
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+# ================= PDF GENERATOR (STUDENT DETAILED ANSWER SHEET) =================
+def generate_student_detailed_pdf(info, q_list, user_answers):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=40)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'PDFTitle', parent=styles['Heading1'], fontName='Helvetica-Bold',
+        fontSize=18, textColor=colors.HexColor("#1e3a8a"), spaceAfter=15, alignment=1
+    )
+    
+    elements.append(Paragraph("Student Examination Answer Sheet", title_style))
+    elements.append(Spacer(1, 5))
+    
+    # Student & Exam Info Header Table
+    header_data = [
+        [f"Student Name: {info['name']}", f"User ID: {info['roll']}"],
+        [f"Class: {info['class']}", f"Subject: {info['sub']}"],
+        [f"Chapter: {info['chap']}", f"Exam Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}"]
+    ]
+    header_table = Table(header_data, colWidths=[260, 260])
+    header_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor("#0f172a")),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 10))
+    
+    # Detailed Questions Table
+    table_data = [["Q#", "Question", "Your Answer", "Correct Answer", "Result"]]
+    score = 0
+    
+    for idx, q in enumerate(q_list):
+        u_ans_idx = user_answers.get(idx)
+        u_ans_txt = q['options'][u_ans_idx - 1] if u_ans_idx else "Not Answered"
+        c_ans_txt = q['options'][q['correct'] - 1]
+        
+        is_correct = (u_ans_idx == q['correct'])
+        if is_correct:
+            score += 1
+            res_txt = "Correct"
+        else:
+            res_txt = "Incorrect"
+            
+        p_q = Paragraph(q['text'], styles['Normal'])
+        p_u = Paragraph(u_ans_txt, styles['Normal'])
+        p_c = Paragraph(c_ans_txt, styles['Normal'])
+        
+        table_data.append([str(idx + 1), p_q, p_u, p_c, res_txt])
+        
+    q_table = Table(table_data, colWidths=[30, 210, 110, 110, 60])
+    q_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1e3a8a")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('ALIGN', (0,0), (0,-1), 'CENTER'),
+        ('ALIGN', (4,0), (4,-1), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+        ('PADDING', (0,0), (-1,-1), 4),
+    ]))
+    elements.append(q_table)
+    elements.append(Spacer(1, 10))
+    
+    # Total Marks Summary
+    summary_style = ParagraphStyle(
+        'PDFSummary', parent=styles['Normal'], fontName='Helvetica-Bold',
+        fontSize=11, textColor=colors.HexColor("#0f172a")
+    )
+    elements.append(Paragraph(f"<b>Total Score Obtained:</b> {score} / {len(q_list)}", summary_style))
+    elements.append(Spacer(1, 25))
+    
+    # Bottom Footer: Teacher Info & Signature Section
+    teacher_name = info.get('teacher_name', 'N/A')
+    sig_data = [
+        [f"Teacher Name: {teacher_name}", ""],
+        [f"Subject: {info['sub']}", ""],
+        [f"Chapter: {info['chap']}", "________________________"],
+        ["", "Teacher's Signature"]
+    ]
+    sig_table = Table(sig_data, colWidths=[300, 220])
+    sig_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('ALIGN', (1,0), (1,-1), 'RIGHT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    elements.append(sig_table)
+    
     doc.build(elements)
     buffer.seek(0)
     return buffer.getvalue()
@@ -300,7 +397,6 @@ def setup_database():
                 exam_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
 
-        # Add approved_at columns if missing
         for tbl in ['teachers', 'students']:
             cursor.execute(f"SHOW COLUMNS FROM {tbl}")
             cols = [r['Field'] for r in cursor.fetchall()]
@@ -317,7 +413,6 @@ def check_60_days_validity():
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            # Change status to pending if approved > 60 days ago
             cursor.execute("""
                 UPDATE students 
                 SET status = 'pending' 
@@ -347,7 +442,6 @@ def generate_credentials(name):
     password = "".join(random.choice(chars) for _ in range(6))
     return userid, password
 
-# Helper function to submit exam results
 def submit_student_exam(q_list, info):
     score = sum(1 for idx, q in enumerate(q_list) if st.session_state.user_answers.get(idx) == q['correct'])
     conn = get_db_connection()
@@ -507,12 +601,16 @@ if menu == "📝 Student Portal":
                         else:
                             cursor.execute("SELECT * FROM questions WHERE class_name=%s AND subject_name=%s AND chapter_name=%s AND teacher_id=%s ORDER BY RAND() LIMIT 40", (stu['class_name'], stu_sub, stu_chap, stu['teacher_id']))
                         raw_q = cursor.fetchall()
+                        
+                        # Fetch Teacher Name for Detailed PDF
+                        cursor.execute("SELECT teacher_name FROM teachers WHERE id=%s", (stu['teacher_id'],))
+                        t_rec = cursor.fetchone()
+                        t_name = t_rec['teacher_name'] if t_rec else "N/A"
                     conn.close()
 
                     if not raw_q:
                         st.error("❌ এই বিষয়ে শিক্ষক কোনো প্রশ্ন যুক্ত করেননি!")
                     else:
-                        # নিশ্চিত করা হচ্ছে যে সর্বোচ্চ ৪০টি প্রশ্নই র‍্যান্ডম হিসেবে আসবে, বেশি নয়
                         if len(raw_q) > 40:
                             raw_q = random.sample(raw_q, 40)
                         else:
@@ -530,54 +628,76 @@ if menu == "📝 Student Portal":
                         
                         st.session_state.prepared_questions = prepared_q
                         st.session_state.student_info = {
-                            'id': stu['id'], 'teacher_id': stu['teacher_id'], 'class': stu['class_name'], 
-                            'roll': stu['userid'], 'name': stu['name'], 'sub': stu_sub, 'chap': stu_chap
+                            'id': stu['id'], 'teacher_id': stu['teacher_id'], 'teacher_name': t_name, 
+                            'class': stu['class_name'], 'roll': stu['userid'], 'name': stu['name'], 
+                            'sub': stu_sub, 'chap': stu_chap
                         }
                         st.session_state.user_answers = {}
                         st.session_state.exam_start_time = time.time()
                         st.session_state.exam_started = True
+                        st.session_state.exam_finished = False
                         st.rerun()
 
         else:
-            # 40-MINUTE TIMER & EXAM INTERFACE (MAX 40 QUESTIONS)
             info = st.session_state.student_info
             q_list = st.session_state.prepared_questions
             
-            elapsed_time = time.time() - st.session_state.exam_start_time
-            total_duration = 40 * 60  # 40 Minutes in seconds
-            remaining_time = total_duration - elapsed_time
+            if not st.session_state.get("exam_finished", False):
+                elapsed_time = time.time() - st.session_state.exam_start_time
+                total_duration = 40 * 60
+                remaining_time = total_duration - elapsed_time
 
-            if remaining_time <= 0:
-                st.warning("⏰ 40 মিনিট সময় শেষ! আপনার উত্তরসমূহ স্বয়ংক্রিয়ভাবে জমা হচ্ছে...")
-                score = submit_student_exam(q_list, info)
-                st.session_state.exam_started = False
-                st.session_state.exam_ready = False
-                st.success(f"🎉 সময় সমাপ্তির কারণে উত্তর জমা নেওয়া হয়েছে। আপনার অর্জন: **{score} / {len(q_list)}**")
-            else:
-                mins, secs = divmod(int(remaining_time), 60)
-                st.markdown(f"<div class='timer-box'>⏳ অবশিষ্ট সময়: {mins:02d} minute(s) {secs:02d} second(s) (40 Mins Limit)</div>", unsafe_allow_html=True)
-                st.info(f"👤 **Student:** {info['name']} | **User ID:** {info['roll']} | **Subject:** {info['sub']} | **Total Questions:** {len(q_list)}")
-                
-                with st.form("exam_form"):
-                    for idx, q in enumerate(q_list):
-                        st.markdown(f"#### Q{idx+1}. {q['text']}")
-                        if q['image']:
-                            try:
-                                st.image(q['image'], width=300)
-                            except: pass
-                        choice = st.radio(f"Select Option Q{idx+1}:", q['options'], index=None, key=f"q_{idx}")
-                        if choice:
-                            st.session_state.user_answers[idx] = q['options'].index(choice) + 1
-                        st.divider()
-
-                    submitted = st.form_submit_button("📤 Submit Final Exam", type="primary", use_container_width=True)
-
-                if submitted:
+                if remaining_time <= 0:
+                    st.warning("⏰ 40 মিনিট সময় শেষ! আপনার উত্তরসমূহ স্বয়ংক্রিয়ভাবে জমা হচ্ছে...")
                     score = submit_student_exam(q_list, info)
-                    st.balloons()
-                    st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{score} / {len(q_list)}**")
+                    st.session_state.last_score = score
+                    st.session_state.exam_finished = True
+                    st.rerun()
+                else:
+                    mins, secs = divmod(int(remaining_time), 60)
+                    st.markdown(f"<div class='timer-box'>⏳ অবশিষ্ট সময়: {mins:02d} minute(s) {secs:02d} second(s) (40 Mins Limit)</div>", unsafe_allow_html=True)
+                    st.info(f"👤 **Student:** {info['name']} | **User ID:** {info['roll']} | **Subject:** {info['sub']} | **Total Questions:** {len(q_list)}")
+                    
+                    with st.form("exam_form"):
+                        for idx, q in enumerate(q_list):
+                            st.markdown(f"#### Q{idx+1}. {q['text']}")
+                            if q['image']:
+                                try:
+                                    st.image(q['image'], width=300)
+                                except: pass
+                            choice = st.radio(f"Select Option Q{idx+1}:", q['options'], index=None, key=f"q_{idx}")
+                            if choice:
+                                st.session_state.user_answers[idx] = q['options'].index(choice) + 1
+                            st.divider()
+
+                        submitted = st.form_submit_button("📤 Submit Final Exam", type="primary", use_container_width=True)
+
+                    if submitted:
+                        score = submit_student_exam(q_list, info)
+                        st.session_state.last_score = score
+                        st.session_state.exam_finished = True
+                        st.rerun()
+            else:
+                # Exam Completion Screen with Detailed Answer Sheet PDF Download
+                st.balloons()
+                st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{st.session_state.last_score} / {len(q_list)}**")
+                
+                # Detailed PDF Answer Sheet Generation
+                detailed_pdf_bytes = generate_student_detailed_pdf(info, q_list, st.session_state.user_answers)
+                
+                st.download_button(
+                    label="📄 Download Detailed Answer Sheet (A4 PDF with Signature)",
+                    data=detailed_pdf_bytes,
+                    file_name=f"AnswerSheet_{info['roll']}_{info['sub']}.pdf",
+                    mime="application/pdf",
+                    type="primary"
+                )
+                
+                if st.button("🔄 Back to Student Dashboard"):
                     st.session_state.exam_started = False
                     st.session_state.exam_ready = False
+                    st.session_state.exam_finished = False
+                    st.rerun()
 
 # ================= 2. TEACHER PORTAL =================
 elif menu == "👨‍🏫 Teacher Portal":
@@ -748,7 +868,6 @@ elif menu == "👨‍🏫 Teacher Portal":
                         conn.close()
                         st.success("✅ চ্যাপ্টার সেভ হয়েছে!")
 
-        # TAB 3: QUESTION BANK & EDIT QUESTION
         with t_tab3:
             q_mode = st.radio("Question Action", ["➕ Add New Question", "✏️ View & Edit My Questions", "🗑️ Delete Question"], horizontal=True)
             st.divider()
@@ -1042,7 +1161,6 @@ elif menu == "👑 Super Admin Panel":
                     st.success("🗑️ অ্যাকাউন্ট মুছে ফেলা হয়েছে!")
                     st.rerun()
 
-        # TAB 3: ADMIN ALL QUESTIONS MASTER VIEW & EDIT
         with admin_tab3:
             st.subheader("📝 Master Question Bank (View & Edit All Questions)")
             conn = get_db_connection()
