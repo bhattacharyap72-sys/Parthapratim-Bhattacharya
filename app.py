@@ -345,7 +345,7 @@ if menu == "📝 Student Portal":
                 elif not student['teacher_id']:
                     st.warning("⚠️ আপনাকে এখনো কোনো শিক্ষক বরাদ্দ করা হয়নি! Super Admin শিক্ষক বরাদ্দ করার পর আপনি পরীক্ষা দিতে পারবেন।")
                 elif student['seat_for_exam'].lower() == 'no':
-                    st.error("🚫 আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disabled) রয়েছে।\No Permission For Examination")
+                    st.error("🚫 আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disabled) রয়েছে।\n No Permission For Examination")
                 else:
                     st.session_state.logged_student = student
                     st.session_state.exam_ready = True
