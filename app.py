@@ -37,6 +37,11 @@ st.markdown("""
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         font-weight: 700 !important;
     }
+    /* Sidebar Radio Button Label Text Color */
+section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] p {
+    color: #60a5fa !important; /* এখানে আপনার পছন্দমতো কালার কোড দিতে পারেন */
+    font-weight: bold !important;
+}
 
     /* Labels - High Contrast White */
     label, div[data-testid="stMarkdownContainer"] p {
