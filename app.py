@@ -149,11 +149,11 @@ def setup_database():
                 status VARCHAR(20) DEFAULT 'pending'
             )""")
 
-        # 2. Students Table
+        # 2. Students Table (teacher_id updated to allow NULL / 0 for unassigned status)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS students (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                teacher_id INT NOT NULL,
+                teacher_id INT NULL,
                 name VARCHAR(100) NOT NULL,
                 address TEXT,
                 school_name VARCHAR(150),
@@ -218,7 +218,7 @@ def setup_database():
         for table in ['students', 'subjects', 'chapters', 'questions', 'exam_results']:
             cursor.execute(f"SHOW COLUMNS FROM {table}")
             cols = [r['Field'] for r in cursor.fetchall()]
-            if 'teacher_id' not in cols:
+            if 'teacher_id' not in cols and table != 'students':
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN teacher_id INT DEFAULT 1")
             if table == 'students' and 'status' not in cols:
                 cursor.execute("ALTER TABLE students ADD COLUMN status VARCHAR(20) DEFAULT 'approved'")
@@ -259,59 +259,65 @@ if menu == "📝 Student Portal":
     if student_tab == "📋 New Student Registration":
         st.subheader("👤 Registration for Online Exams")
         
-        # Fetch Approved Teachers
+        # Fetch Approved Administrators / Teachers
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute("SELECT id, teacher_name, institute_name, teacher_code FROM teachers WHERE status='approved'")
             approved_teachers = cursor.fetchall()
         conn.close()
 
-        if not approved_teachers:
-            st.warning("⚠️ সিস্টেমে কোনো অনুমোদিত শিক্ষক পাওয়া যায়নি! শিক্ষকের অনুমোদনের পর রেজিস্ট্রেশন করুন।")
-        else:
-            teacher_map = {f"{t['teacher_name']} ({t['institute_name'] or 'Private Batch'}) - Code: {t['teacher_code']}": t['id'] for t in approved_teachers}
-            
-            with st.form("stu_reg_form"):
-                selected_t_str = st.selectbox("Select Your Teacher / Institute *", list(teacher_map.keys()))
-                col1, col2 = st.columns(2)
-                with col1:
-                    reg_name = st.text_input("Full Name *")
-                    reg_school = st.text_input("School Name *")
-                    reg_class = st.selectbox("Class *", CLASSES)
-                with col2:
-                    reg_dob = st.date_input("Date of Birth *", min_value=date(1990, 1, 1), max_value=date.today())
-                    reg_address = st.text_area("Address *")
-                    
-                submit_reg = st.form_submit_button("Submit Application", type="primary", use_container_width=True)
+        # Build Teacher Options including Administrator option
+        teacher_map = {"🏛️ System Administrator (Assign Teacher Later)": None}
+        for t in approved_teachers:
+            label = f"{t['teacher_name']} ({t['institute_name'] or 'Private Batch'}) - Code: {t['teacher_code']}"
+            teacher_map[label] = t['id']
 
-            if submit_reg:
-                if not (reg_name and reg_school and reg_address):
-                    st.warning("⚠️ সমস্ত প্রয়োজনীয় বিবরণ পূরণ করুন!")
-                else:
-                    teacher_id = teacher_map[selected_t_str]
-                    userid, password = generate_credentials(reg_name)
+        with st.form("stu_reg_form"):
+            selected_t_str = st.selectbox(
+                "Select Administrator / Teacher *", 
+                list(teacher_map.keys()), 
+                help="আপনি যদি আপনার শিক্ষককে তালিকায় না পান, 'System Administrator' বেছে নিন। অ্যাডমিন আপনাকে শিক্ষক বরাদ্দ করে দেবেন।"
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                reg_name = st.text_input("Full Name *")
+                reg_school = st.text_input("School Name *")
+                reg_class = st.selectbox("Class *", CLASSES)
+            with col2:
+                reg_dob = st.date_input("Date of Birth *", min_value=date(1990, 1, 1), max_value=date.today())
+                reg_address = st.text_area("Address *")
+                
+            submit_reg = st.form_submit_button("Submit Application", type="primary", use_container_width=True)
+
+        if submit_reg:
+            if not (reg_name and reg_school and reg_address):
+                st.warning("⚠️ সমস্ত প্রয়োজনীয় বিবরণ পূরণ করুন!")
+            else:
+                teacher_id = teacher_map[selected_t_str]
+                userid, password = generate_credentials(reg_name)
+                
+                try:
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
+                        sql = """INSERT INTO students 
+                                 (teacher_id, name, address, school_name, class_name, dob, userid, password, seat_for_exam, status)
+                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'yes', 'pending')"""
+                        cursor.execute(sql, (teacher_id, reg_name, reg_address, reg_school, reg_class, reg_dob, userid, password))
+                        conn.commit()
+                    conn.close()
                     
-                    try:
-                        conn = get_db_connection()
-                        with conn.cursor() as cursor:
-                            sql = """INSERT INTO students 
-                                     (teacher_id, name, address, school_name, class_name, dob, userid, password, seat_for_exam, status)
-                                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'yes', 'pending')"""
-                            cursor.execute(sql, (teacher_id, reg_name, reg_address, reg_school, reg_class, reg_dob, userid, password))
-                            conn.commit()
-                        conn.close()
-                        
-                        st.success("🎉 রেজিস্ট্রেশন আবেদন জমা হয়েছে!")
-                        st.markdown(f"""
-                            <div class='cred-box'>
-                                <h4>📌 আপনার পরীক্ষার লগইন ক্রিডেনশিয়াল:</h4>
-                                <p><b>User ID:</b> <code>{userid}</code></p>
-                                <p><b>Password:</b> <code>{password}</code></p>
-                                <small>⚠️ আপনার শিক্ষক আইডিটি <b>Approve</b> করার পর আপনি পরীক্ষা দিতে পারবেন। বিবরণটি লিখে রাখুন।</small>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+                    st.success("🎉 রেজিস্ট্রেশন আবেদন জমা হয়েছে!")
+                    st.markdown(f"""
+                        <div class='cred-box'>
+                            <h4>📌 আপনার পরীক্ষার লগইন ক্রিডেনশিয়াল:</h4>
+                            <p><b>User ID:</b> <code>{userid}</code></p>
+                            <p><b>Password:</b> <code>{password}</code></p>
+                            <p><b>Assigned Teacher ID:</b> <code>{teacher_id if teacher_id else 'Pending Administrator Assignment'}</code></p>
+                            <small>⚠️ বিবরণটি লিখে রাখুন। অ্যাডমিন/শিক্ষক অ্যাকাউন্ট Approve করার পর আপনি পরীক্ষা দিতে পারবেন।</small>
+                        </div>
+                    """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
     # --- Student Login & Exam ---
     elif student_tab == "🔑 Login & Start Exam":
@@ -335,7 +341,9 @@ if menu == "📝 Student Portal":
                 if not student:
                     st.error("❌ ভুল User ID বা Password!")
                 elif student['status'] != 'approved':
-                    st.warning("⏳ আপনার অ্যাকাউন্টটি এখনো শিক্ষক দ্বারা অনুমোদিত (Approve) হয়নি। শিক্ষককে অনুমোদন করতে বলুন।")
+                    st.warning("⏳ আপনার অ্যাকাউন্টটি এখনো অনুমোদিত (Approve) হয়নি। অনুগ্রহ করে অপেক্ষা করুন।")
+                elif not student['teacher_id']:
+                    st.warning("⚠️ আপনাকে এখনো কোনো শিক্ষক বরাদ্দ করা হয়নি! Super Admin শিক্ষক বরাদ্দ করার পর আপনি পরীক্ষা দিতে পারবেন।")
                 elif student['seat_for_exam'].lower() == 'no':
                     st.error("🚫 আপনার পরীক্ষা দেওয়ার অনুমতি স্থগিত (Disabled) রয়েছে।")
                 else:
@@ -351,7 +359,7 @@ if menu == "📝 Student Portal":
                 
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    st.info(f"**Candidate:** {stu['name']} | **Class:** {stu['class_name']}")
+                    st.info(f"**Candidate:** {stu['name']} | **Class:** {stu['class_name']} | **Teacher ID:** {stu['teacher_id']}")
                     
                     conn = get_db_connection()
                     with conn.cursor() as cursor:
@@ -508,24 +516,26 @@ elif menu == "👨‍🏫 Teacher Portal":
     else:
         # LOGGED IN TEACHER DASHBOARD
         teacher = st.session_state.logged_teacher
-        st.sidebar.markdown(f"**👨‍🏫 Logged Teacher:**\n{teacher['teacher_name']}\nCode: `{teacher['teacher_code']}`")
+        st.sidebar.markdown(f"**👨‍🏫 Logged Teacher:**\n{teacher['teacher_name']}\nID: `{teacher['id']}` | Code: `{teacher['teacher_code']}`")
         if st.sidebar.button("🚪 Teacher Logout"):
             st.session_state.logged_teacher = None
             st.rerun()
 
         t_tab1, t_tab2, t_tab3, t_tab4 = st.tabs([
-            "👥 Student Approvals & Seat Control", 
+            "👥 Student Credentials & Approvals", 
             "📚 Subjects & Chapters", 
             "➕ Question Bank", 
             "📊 Results & PDF Reports"
         ])
 
-        # TAB 1: STUDENT APPROVALS
+        # TAB 1: STUDENT APPROVALS & CREDENTIALS
         with t_tab1:
-            st.subheader("📋 Registered Students Management")
+            st.subheader("📋 Registered Students List (Usernames & Passwords)")
             conn = get_db_connection()
             with conn.cursor() as cursor:
-                cursor.execute("SELECT id, name, class_name, school_name, userid, status, seat_for_exam FROM students WHERE teacher_id=%s", (teacher['id'],))
+                cursor.execute("""
+                    SELECT id, teacher_id, name, class_name, school_name, userid, password, status, seat_for_exam 
+                    FROM students WHERE teacher_id=%s""", (teacher['id'],))
                 stu_list = cursor.fetchall()
             conn.close()
 
@@ -538,7 +548,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                     st.markdown("#### 1. Approve / Reject Student Registration")
                     pending_stus = [s for s in stu_list if s['status'] == 'pending']
                     if pending_stus:
-                        p_dict = {f"{s['name']} (Class: {s['class_name']} | ID: {s['userid']})": s['id'] for s in pending_stus}
+                        p_dict = {f"{s['name']} (Class: {s['class_name']} | User ID: {s['userid']})": s['id'] for s in pending_stus}
                         sel_p = st.selectbox("Select Pending Student", list(p_dict.keys()))
                         act_p = st.radio("Set Status:", ["approved", "rejected"], horizontal=True)
                         if st.button("Update Registration Status"):
@@ -744,31 +754,123 @@ elif menu == "👑 Super Admin Panel":
     if sa_pwd == SUPER_ADMIN_PASSWORD:
         st.success("🔑 Admin Access Granted")
         
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            # ID and Password along with other details fetched
-            cursor.execute("SELECT id, teacher_name, institute_name, teacher_code, email, password, status FROM teachers")
-            all_teachers = cursor.fetchall()
-        conn.close()
+        admin_sub_tab1, admin_sub_tab2 = st.tabs(["👨‍🏫 Teachers Master Control", "🎓 All Students Master List & Teacher Assignment"])
 
-        st.subheader("👨‍🏫 Registered Teachers Master List (ID & Passwords)")
-        if all_teachers:
-            # Displaying full teacher details including ID & Password in dataframe
-            st.dataframe(all_teachers, use_container_width=True)
-            
-            st.divider()
-            st.subheader("🛡️ Approve / Block Teachers")
-            t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['email']}) - Status: {t['status']}": t['id'] for t in all_teachers}
-            sel_t = st.selectbox("Select Teacher Account", list(t_map.keys()))
-            new_t_status = st.radio("Account Permission:", ["approved", "blocked", "pending"], horizontal=True)
+        # SUB-TAB 1: TEACHERS MASTER CONTROL
+        with admin_sub_tab1:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id, teacher_name, institute_name, teacher_code, email, password, status FROM teachers")
+                all_teachers = cursor.fetchall()
+            conn.close()
 
-            if st.button("Update Teacher Authorization", type="primary"):
-                conn = get_db_connection()
-                with conn.cursor() as cursor:
-                    cursor.execute("UPDATE teachers SET status=%s WHERE id=%s", (new_t_status, t_map[sel_t]))
-                    conn.commit()
-                conn.close()
-                st.success("✅ টিচারের স্ট্যাটাস আপডেট করা হয়েছে!")
-                st.rerun()
-        else:
-            st.info("সিস্টেমে কোনো টিচার রেজিস্টার্ড নেই।")
+            st.subheader("👨‍🏫 Registered Teachers Master List (ID & Passwords)")
+            if all_teachers:
+                st.dataframe(all_teachers, use_container_width=True)
+                
+                st.divider()
+                st.subheader("🛡️ Approve / Block Teachers")
+                t_map = {f"ID: {t['id']} | {t['teacher_name']} ({t['email']}) - Status: {t['status']}": t['id'] for t in all_teachers}
+                sel_t = st.selectbox("Select Teacher Account", list(t_map.keys()))
+                new_t_status = st.radio("Account Permission:", ["approved", "blocked", "pending"], horizontal=True)
+
+                if st.button("Update Teacher Authorization", type="primary"):
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
+                        cursor.execute("UPDATE teachers SET status=%s WHERE id=%s", (new_t_status, t_map[sel_t]))
+                        conn.commit()
+                    conn.close()
+                    st.success("✅ টিচারের স্ট্যাটাস আপডেট করা হয়েছে!")
+                    st.rerun()
+            else:
+                st.info("সিস্টেমে কোনো টিচার রেজিস্টার্ড নেই।")
+
+        # SUB-TAB 2: ALL STUDENTS MASTER LIST & TEACHER ASSIGNMENT
+        with admin_sub_tab2:
+            st.subheader("🎓 All Registered Students Master List")
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        s.id AS student_id,
+                        s.teacher_id,
+                        t.teacher_name AS assigned_administrator,
+                        s.name AS student_name,
+                        s.class_name,
+                        s.school_name,
+                        s.userid AS username,
+                        s.password,
+                        s.status,
+                        s.seat_for_exam
+                    FROM students s
+                    LEFT JOIN teachers t ON s.teacher_id = t.id
+                    ORDER BY s.id DESC
+                """)
+                all_students = cursor.fetchall()
+                
+                # Fetch all approved teachers for assignment option
+                cursor.execute("SELECT id, teacher_name, teacher_code, institute_name FROM teachers WHERE status='approved'")
+                approved_teachers_list = cursor.fetchall()
+            conn.close()
+
+            if all_students:
+                # Format output for better readability in DataFrame
+                formatted_students = []
+                for s in all_students:
+                    s_copy = dict(s)
+                    if not s_copy['assigned_administrator']:
+                        s_copy['assigned_administrator'] = "⚠️ Unassigned (Registered under Admin)"
+                    formatted_students.append(s_copy)
+
+                st.dataframe(formatted_students, use_container_width=True)
+                
+                st.divider()
+                col_m1, col_m2 = st.columns(2)
+
+                # Feature A: Assign / Change Teacher for a Student
+                with col_m1:
+                    st.subheader("🔄 Assign / Re-assign Teacher to Student")
+                    if approved_teachers_list:
+                        s_assign_map = {
+                            f"ID: {s['student_id']} | {s['student_name']} (User: {s['username']}) - Current: {s['assigned_administrator']}": s['student_id'] 
+                            for s in all_students
+                        }
+                        t_assign_map = {
+                            f"{t['teacher_name']} ({t['institute_name'] or 'Batch'}) - Code: {t['teacher_code']} (ID: {t['id']})": t['id'] 
+                            for t in approved_teachers_list
+                        }
+
+                        sel_s_for_t = st.selectbox("1. Select Student", list(s_assign_map.keys()))
+                        sel_t_for_s = st.selectbox("2. Select Teacher to Assign", list(t_assign_map.keys()))
+
+                        if st.button("Assign Teacher", type="primary"):
+                            conn = get_db_connection()
+                            with conn.cursor() as cursor:
+                                cursor.execute(
+                                    "UPDATE students SET teacher_id=%s, status='approved' WHERE id=%s", 
+                                    (t_assign_map[sel_t_for_s], s_assign_map[sel_s_for_t])
+                                )
+                                conn.commit()
+                            conn.close()
+                            st.success("✅ শিক্ষার্থীকে শিক্ষক সফলভাবে বরাদ্দ করা হয়েছে এবং অ্যাকাউন্ট Approve হয়েছে!")
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ শিক্ষক বরাদ্দ করার জন্য কোনো 'Approved' শিক্ষক পাওয়া যায়নি। আগে শিক্ষক অনুমোদন করুন।")
+
+                # Feature B: Global Student Status Update
+                with col_m2:
+                    st.subheader("🛡️ Global Student Status Update")
+                    s_map = {f"Student ID: {s['student_id']} | {s['student_name']} (Username: {s['username']})": s['student_id'] for s in all_students}
+                    sel_s = st.selectbox("Select Student Account", list(s_map.keys()))
+                    new_s_status = st.radio("Student Registration Status:", ["approved", "rejected", "pending"], horizontal=True, key="admin_stu_status")
+                    
+                    if st.button("Update Student Status (Global)", type="primary"):
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("UPDATE students SET status=%s WHERE id=%s", (new_s_status, s_map[sel_s]))
+                            conn.commit()
+                        conn.close()
+                        st.success("✅ ছাত্র-ছাত্রীর স্ট্যাটাস আপডেট করা হয়েছে!")
+                        st.rerun()
+            else:
+                st.info("সিস্টেমে কোনো ছাত্র-ছাত্রী রেজিস্টার্ড নেই।")
