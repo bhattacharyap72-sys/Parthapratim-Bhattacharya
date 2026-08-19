@@ -34,8 +34,7 @@ st.markdown("""
     }
     .stTextInput>div>div>input, 
     .stSelectbox>div>div>div, 
-    .stTextArea>div>div>textarea
-    .stTextArea textarea {
+    .stTextArea>div>div>textarea {
         background-color: #ffffff !important;
         color: #000000 !important;
         border: 1px solid #374151 !important;
