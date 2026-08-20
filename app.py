@@ -1036,11 +1036,11 @@ elif menu == "👨‍🏫 Teacher Portal":
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    opt_corr = st.text_input("✅ Correct Option")
-                    opt_w1 = st.text_input("❌ Option 2")
+                    opt_corr = st.text_input("✅ Correct Option", key="add_opt_corr")
+                    opt_w1 = st.text_input("❌ Option 2", key="add_opt_w1")
                 with col2:
-                    opt_w2 = st.text_input("❌ Option 3")
-                    opt_w3 = st.text_input("❌ Option 4")
+                    opt_w2 = st.text_input("❌ Option 3", key="add_opt_w2")
+                    opt_w3 = st.text_input("❌ Option 4", key="add_opt_w3")
 
                 if st.button("Save Question to Bank", type="primary"):
                     if q_text and opt_corr and opt_w1 and opt_w2 and opt_w3 and q_chap != "None":
@@ -1056,7 +1056,17 @@ elif menu == "👨‍🏫 Teacher Portal":
                             cursor.execute(sql, (teacher['id'], q_cls, q_sub, q_chap, q_text, img_url, opts[0], opts[1], opts[2], opts[3], corr_idx))
                             conn.commit()
                         conn.close()
+                        
+                        # --- input fields reset করার জন্য session state clear ---
+                        st.session_state["add_q_text_input"] = ""
+                        st.session_state["add_opt_corr"] = ""
+                        st.session_state["add_opt_w1"] = ""
+                        st.session_state["add_opt_w2"] = ""
+                        st.session_state["add_opt_w3"] = ""
+                        
                         st.success("✅ প্রশ্ন সফলভাবে সেভ করা হয়েছে!")
+                        time.sleep(1) # ১ সেকেন্ড ওয়েট করে পেজ রিফ্রেশ হবে
+                        st.rerun()    # পেজ রিফ্রেশ হলে সব ইনপুট বক্স আবার নতুন খালি হয়ে যাবে
 
             elif q_mode == "✏️ View & Edit My Questions":
                 conn = get_db_connection()
