@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pymysql
 import pymysql.cursors
 import random
@@ -31,7 +32,7 @@ st.markdown("""
         color: #f3f4f6 !important;
     }
 
-    /* Sidebar Radio Button Label Text Color (Custom CSS Added) */
+    /* Sidebar Radio Button Label Text Color */
     section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] p {
         color: #60a5fa !important;
         font-weight: bold !important;
@@ -111,17 +112,6 @@ st.markdown("""
         margin-top: 15px;
         color: #f9fafb;
     }
-    .timer-box {
-        background-color: #7f1d1d;
-        color: #fef2f2;
-        padding: 12px;
-        border-radius: 8px;
-        text-align: center;
-        font-size: 1.2rem;
-        font-weight: bold;
-        border: 1px solid #ef4444;
-        margin-bottom: 15px;
-    }
     
     /* Footer Styling */
     .footer {
@@ -148,20 +138,73 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ================= DB CONFIGURATION =================
+# ================= DB CONFIGURATION WITH UTF-8 BANGAL SUPPORT =================
 DB_CONFIG = {
     'host': 'sql12.freesqldatabase.com',
     'user': 'sql12835523',
     'password': 'iWsuYeRXjL',
     'database': 'sql12835523',
-    'port': 3306
+    'port': 3306,
+    'charset': 'utf8mb4'
 }
 
 CLASSES = ['Class V', 'Class VI', 'Class VII', 'Class VIII', 'Class IX', 'Class X', 'Class XI', 'Class XII']
 SUPER_ADMIN_PASSWORD = "M@m0ni4thjune"
 
 def get_db_connection():
-    return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
+    conn = pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
+    with conn.cursor() as cursor:
+        cursor.execute("SET NAMES utf8mb4;")
+        cursor.execute("SET CHARACTER SET utf8mb4;")
+        cursor.execute("SET character_set_connection=utf8mb4;")
+    return conn
+
+# ================= REAL-TIME DIGITAL COUNTDOWN TIMER COMPONENT =================
+def render_digital_timer(seconds_left):
+    timer_html = f"""
+    <div id="digital-timer-container" style="
+        background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+        color: #ffffff;
+        padding: 12px 20px;
+        border-radius: 10px;
+        text-align: center;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 1.5rem;
+        font-weight: bold;
+        border: 2px solid #ef4444;
+        box-shadow: 0px 4px 10px rgba(239, 68, 68, 0.3);
+        margin-bottom: 15px;
+    ">
+        ⏱️ TIME REMAINING: <span id="timer-display" style="color: #fde047;">--:--</span>
+    </div>
+    <script>
+        var totalSeconds = {int(seconds_left)};
+        function updateTimer() {{
+            if (totalSeconds <= 0) {{
+                document.getElementById("timer-display").innerHTML = "00:00 (TIME EXPIRED)";
+                return;
+            }}
+            var mins = Math.floor(totalSeconds / 60);
+            var secs = totalSeconds % 60;
+            var displayMins = mins < 10 ? "0" + mins : mins;
+            var displaySecs = secs < 10 ? "0" + secs : secs;
+            document.getElementById("timer-display").innerHTML = displayMins + ":" + displaySecs;
+            totalSeconds--;
+        }}
+        updateTimer();
+        setInterval(updateTimer, 1000);
+    </script>
+    """
+    components.html(timer_html, height=75)
+
+# Helper for processing uploaded image
+def process_uploaded_image(img_file):
+    if img_file is not None:
+        bytes_data = img_file.getvalue()
+        base64_str = base64.b64encode(bytes_data).decode('utf-8')
+        mime_type = img_file.type
+        return f"data:{mime_type};base64,{base64_str}"
+    return None
 
 # ================= PDF GENERATOR (SUMMARY SHEET) =================
 def generate_pdf_report(data_rows, title="Exam Result Sheet"):
@@ -318,7 +361,7 @@ def generate_student_detailed_pdf(info, q_list, user_answers):
     buffer.seek(0)
     return buffer.getvalue()
 
-# ================= DB MIGRATION & SETUP =================
+# ================= DB MIGRATION & SETUP WITH UTF-8 =================
 def setup_database():
     try:
         conn = get_db_connection()
@@ -334,7 +377,7 @@ def setup_database():
                 password VARCHAR(50) NOT NULL,
                 status VARCHAR(20) DEFAULT 'pending',
                 approved_at DATETIME NULL
-            )""")
+            ) DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci""")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS students (
@@ -350,7 +393,7 @@ def setup_database():
                 seat_for_exam VARCHAR(10) DEFAULT 'yes',
                 status VARCHAR(20) DEFAULT 'pending',
                 approved_at DATETIME NULL
-            )""")
+            ) DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci""")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subjects (
@@ -358,7 +401,7 @@ def setup_database():
                 teacher_id INT NOT NULL,
                 class_name VARCHAR(20) NOT NULL,
                 subject_name VARCHAR(100) NOT NULL
-            )""")
+            ) DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci""")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS chapters (
@@ -367,7 +410,7 @@ def setup_database():
                 class_name VARCHAR(20) NOT NULL,
                 subject_name VARCHAR(100) NOT NULL,
                 chapter_name VARCHAR(100) NOT NULL
-            )""")
+            ) DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci""")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS questions (
@@ -380,7 +423,7 @@ def setup_database():
                 image_path LONGTEXT,
                 option1 TEXT, option2 TEXT, option3 TEXT, option4 TEXT,
                 correct_option INT
-            )""")
+            ) DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci""")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS exam_results (
@@ -395,7 +438,13 @@ def setup_database():
                 score INT,
                 total_questions INT,
                 exam_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )""")
+            ) DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci""")
+
+        # Convert existing tables charset to utf8mb4 if needed
+        for tbl in ['teachers', 'students', 'subjects', 'chapters', 'questions', 'exam_results']:
+            try:
+                cursor.execute(f"ALTER TABLE {tbl} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+            except: pass
 
         for tbl in ['teachers', 'students']:
             cursor.execute(f"SHOW COLUMNS FROM {tbl}")
@@ -555,7 +604,7 @@ if menu == "📝 Student Portal":
                 if not student:
                     st.error("❌ ভুল User ID বা Password!")
                 elif student['status'] != 'approved':
-                    st.warning("⏳ আপনার অ্যাকাউন্টটি অনুমোদিত (Approve) নেই অথবা 60 দিন অতিক্রান্ত হওয়ার পর মেয়ার উত্তীর্ণ হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।")
+                    st.warning("⏳ আপনার অ্যাকাউন্টটি অনুমোদিত (Approve) নেই অথবা 60 দিন অতিক্রান্ত হওয়ার পর মেয়াদ উত্তীর্ণ হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।")
                 elif not student['teacher_id']:
                     st.warning("⚠️ আপনাকে এখনো কোনো শিক্ষক বরাদ্দ করা হয়নি!")
                 elif student['seat_for_exam'].lower() == 'no':
@@ -602,7 +651,6 @@ if menu == "📝 Student Portal":
                             cursor.execute("SELECT * FROM questions WHERE class_name=%s AND subject_name=%s AND chapter_name=%s AND teacher_id=%s ORDER BY RAND() LIMIT 40", (stu['class_name'], stu_sub, stu_chap, stu['teacher_id']))
                         raw_q = cursor.fetchall()
                         
-                        # Fetch Teacher Name for Detailed PDF
                         cursor.execute("SELECT teacher_name FROM teachers WHERE id=%s", (stu['teacher_id'],))
                         t_rec = cursor.fetchone()
                         t_name = t_rec['teacher_name'] if t_rec else "N/A"
@@ -654,13 +702,14 @@ if menu == "📝 Student Portal":
                     st.session_state.exam_finished = True
                     st.rerun()
                 else:
-                    mins, secs = divmod(int(remaining_time), 60)
-                    st.markdown(f"<div class='timer-box'>⏳ অবশিষ্ট সময়: {mins:02d} minute(s) {secs:02d} second(s) (40 Mins Limit)</div>", unsafe_allow_html=True)
+                    # Live Digital Countdown Timer Rendering
+                    render_digital_timer(remaining_time)
                     st.info(f"👤 **Student:** {info['name']} | **User ID:** {info['roll']} | **Subject:** {info['sub']} | **Total Questions:** {len(q_list)}")
                     
                     with st.form("exam_form"):
                         for idx, q in enumerate(q_list):
-                            st.markdown(f"#### Q{idx+1}. {q['text']}")
+                            # HTML & Bengali formatting support
+                            st.markdown(f"#### Q{idx+1}. {q['text']}", unsafe_allow_html=True)
                             if q['image']:
                                 try:
                                     st.image(q['image'], width=300)
@@ -678,11 +727,10 @@ if menu == "📝 Student Portal":
                         st.session_state.exam_finished = True
                         st.rerun()
             else:
-                # Exam Completion Screen with Detailed Answer Sheet PDF Download
+                # Exam Completion Screen
                 st.balloons()
                 st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{st.session_state.last_score} / {len(q_list)}**")
                 
-                # Detailed PDF Answer Sheet Generation
                 detailed_pdf_bytes = generate_student_detailed_pdf(info, q_list, st.session_state.user_answers)
                 
                 st.download_button(
@@ -891,14 +939,12 @@ elif menu == "👨‍🏫 Teacher Portal":
                     conn.close()
 
                 q_chap = st.selectbox("Chapter", q_chaps if q_chaps else ["None"], key="tq_chap")
-                q_text = st.text_area("Question Text")
+                q_text = st.text_area("Question Text (Bangla & HTML Formatting Allowed)", help="💡 Tip: Bold: <b>text</b>, Italic: <i>text</i>, Superscript: x<sup>2</sup>, Subscript: H<sub>2</sub>O")
                 
-                q_img_file = st.file_uploader("Upload Image Diagram (Optional)", type=['png', 'jpg', 'jpeg'])
-                img_url = None
-                if q_img_file:
-                    bytes_data = q_img_file.getvalue()
-                    base64_str = base64.b64encode(bytes_data).decode('utf-8')
-                    img_url = f"data:image/png;base64,{base64_str}"
+                q_img_file = st.file_uploader("📷 Browse & Upload Diagram/Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'], key="add_q_img")
+                img_url = process_uploaded_image(q_img_file)
+                if img_url:
+                    st.image(img_url, caption="Image Preview", width=250)
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -922,7 +968,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                             cursor.execute(sql, (teacher['id'], q_cls, q_sub, q_chap, q_text, img_url, opts[0], opts[1], opts[2], opts[3], corr_idx))
                             conn.commit()
                         conn.close()
-                        st.success("✅ প্রশ্ন সেভ করা হয়েছে!")
+                        st.success("✅ প্রশ্ন সফলভাবে সেভ করা হয়েছে!")
 
             elif q_mode == "✏️ View & Edit My Questions":
                 conn = get_db_connection()
@@ -936,27 +982,42 @@ elif menu == "👨‍🏫 Teacher Portal":
                     sel_q_key = st.selectbox("Select Question to Edit", list(q_dict.keys()))
                     selected_q = q_dict[sel_q_key]
 
-                    with st.form("edit_q_form"):
-                        st.subheader(f"Edit Question ID: {selected_q['id']}")
-                        e_text = st.text_area("Question Text", value=selected_q['question_text'])
-                        e_opt1 = st.text_input("Option 1", value=selected_q['option1'])
-                        e_opt2 = st.text_input("Option 2", value=selected_q['option2'])
-                        e_opt3 = st.text_input("Option 3", value=selected_q['option3'])
-                        e_opt4 = st.text_input("Option 4", value=selected_q['option4'])
-                        e_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_q['correct_option'])-1)
+                    st.subheader(f"Edit Question ID: {selected_q['id']}")
+                    e_text = st.text_area("Question Text (Bangla & HTML Supported)", value=selected_q['question_text'])
+                    
+                    if selected_q.get('image_path'):
+                        st.write("Current Image Preview:")
+                        try:
+                            st.image(selected_q['image_path'], width=200)
+                        except: pass
 
-                        if st.form_submit_button("Update Question", type="primary"):
-                            conn = get_db_connection()
-                            with conn.cursor() as cursor:
-                                cursor.execute("""
-                                    UPDATE questions 
-                                    SET question_text=%s, option1=%s, option2=%s, option3=%s, option4=%s, correct_option=%s 
-                                    WHERE id=%s AND teacher_id=%s
-                                """, (e_text, e_opt1, e_opt2, e_opt3, e_opt4, e_corr, selected_q['id'], teacher['id']))
-                                conn.commit()
-                            conn.close()
-                            st.success("✅ প্রশ্ন সফলভাবে আপডেট হয়েছে!")
-                            st.rerun()
+                    e_img_file = st.file_uploader("📷 Update Question Image (PNG/JPG - Leave blank to keep existing)", type=['png', 'jpg', 'jpeg'], key="edit_q_img")
+                    remove_img = st.checkbox("🗑️ Remove existing image")
+                    
+                    e_opt1 = st.text_input("Option 1", value=selected_q['option1'])
+                    e_opt2 = st.text_input("Option 2", value=selected_q['option2'])
+                    e_opt3 = st.text_input("Option 3", value=selected_q['option3'])
+                    e_opt4 = st.text_input("Option 4", value=selected_q['option4'])
+                    e_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_q['correct_option'])-1)
+
+                    if st.button("Update Question", type="primary"):
+                        final_img = selected_q.get('image_path')
+                        if remove_img:
+                            final_img = None
+                        elif e_img_file is not None:
+                            final_img = process_uploaded_image(e_img_file)
+
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("""
+                                UPDATE questions 
+                                SET question_text=%s, image_path=%s, option1=%s, option2=%s, option3=%s, option4=%s, correct_option=%s 
+                                WHERE id=%s AND teacher_id=%s
+                            """, (e_text, final_img, e_opt1, e_opt2, e_opt3, e_opt4, e_corr, selected_q['id'], teacher['id']))
+                            conn.commit()
+                        conn.close()
+                        st.success("✅ প্রশ্ন ও ছবি সফলভাবে আপডেট হয়েছে!")
+                        st.rerun()
                 else:
                     st.info("আপনার তৈরি কোনো প্রশ্ন পাওয়া যায়নি।")
 
@@ -1182,27 +1243,42 @@ elif menu == "👑 Super Admin Panel":
                 sel_admin_q_key = st.selectbox("Select Any Question to Edit / Modify", list(q_admin_dict.keys()))
                 selected_admin_q = q_admin_dict[sel_admin_q_key]
 
-                with st.form("admin_edit_q_form"):
-                    st.subheader(f"Admin Edit Question ID: {selected_admin_q['id']}")
-                    a_q_text = st.text_area("Question Text", value=selected_admin_q['question_text'])
-                    a_opt1 = st.text_input("Option 1", value=selected_admin_q['option1'])
-                    a_opt2 = st.text_input("Option 2", value=selected_admin_q['option2'])
-                    a_opt3 = st.text_input("Option 3", value=selected_admin_q['option3'])
-                    a_opt4 = st.text_input("Option 4", value=selected_admin_q['option4'])
-                    a_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_admin_q['correct_option'])-1)
+                st.subheader(f"Admin Edit Question ID: {selected_admin_q['id']}")
+                a_q_text = st.text_area("Question Text (Bangla & HTML Supported)", value=selected_admin_q['question_text'])
+                
+                if selected_admin_q.get('image_path'):
+                    st.write("Current Image Preview:")
+                    try:
+                        st.image(selected_admin_q['image_path'], width=200)
+                    except: pass
 
-                    if st.form_submit_button("Update Question (Admin Overwrite)", type="primary"):
-                        conn = get_db_connection()
-                        with conn.cursor() as cursor:
-                            cursor.execute("""
-                                UPDATE questions 
-                                SET question_text=%s, option1=%s, option2=%s, option3=%s, option4=%s, correct_option=%s 
-                                WHERE id=%s
-                            """, (a_q_text, a_opt1, a_opt2, a_opt3, a_opt4, a_corr, selected_admin_q['id']))
-                            conn.commit()
-                        conn.close()
-                        st.success("✅ প্রশ্ন সফলভাবে আপডেট করা হয়েছে!")
-                        st.rerun()
+                a_img_file = st.file_uploader("📷 Update Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'], key="admin_edit_q_img")
+                a_remove_img = st.checkbox("🗑️ Remove image", key="admin_rem_img")
+
+                a_opt1 = st.text_input("Option 1", value=selected_admin_q['option1'])
+                a_opt2 = st.text_input("Option 2", value=selected_admin_q['option2'])
+                a_opt3 = st.text_input("Option 3", value=selected_admin_q['option3'])
+                a_opt4 = st.text_input("Option 4", value=selected_admin_q['option4'])
+                a_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_admin_q['correct_option'])-1)
+
+                if st.button("Update Question (Admin Overwrite)", type="primary"):
+                    admin_final_img = selected_admin_q.get('image_path')
+                    if a_remove_img:
+                        admin_final_img = None
+                    elif a_img_file is not None:
+                        admin_final_img = process_uploaded_image(a_img_file)
+
+                    conn = get_db_connection()
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE questions 
+                            SET question_text=%s, image_path=%s, option1=%s, option2=%s, option3=%s, option4=%s, correct_option=%s 
+                            WHERE id=%s
+                        """, (a_q_text, admin_final_img, a_opt1, a_opt2, a_opt3, a_opt4, a_corr, selected_admin_q['id']))
+                        conn.commit()
+                    conn.close()
+                    st.success("✅ প্রশ্ন সফলভাবে আপডেট করা হয়েছে!")
+                    st.rerun()
             else:
                 st.info("কোনো প্রশ্ন যুক্ত করা নেই।")
 
