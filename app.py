@@ -6,6 +6,8 @@ import random
 import string
 import base64
 import time
+import urllib.request
+import os
 from datetime import date, datetime
 from io import BytesIO
 
@@ -14,6 +16,29 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# ================= BENGALI FONT SETUP FOR REPORTLAB =================
+@st.cache_resource
+def setup_bengali_font():
+    font_path = "NotoSansBengali-Regular.ttf"
+    if not os.path.exists(font_path):
+        try:
+            # Download Noto Sans Bengali font from Google Fonts GitHub repository
+            url = "https://github.com/google/fonts/raw/main/ofl/notosansbengali/NotoSansBengali%5Bwdth%2Cwght%5D.ttf"
+            urllib.request.urlretrieve(url, font_path)
+        except Exception as e:
+            pass
+    if os.path.exists(font_path):
+        try:
+            pdfmetrics.registerFont(TTFont('NotoBengali', font_path))
+            return 'NotoBengali'
+        except Exception:
+            return 'Helvetica'
+    return 'Helvetica'
+
+PDF_FONT = setup_bengali_font()
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -79,6 +104,30 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
+    /* HIGH CONTRAST FILE UPLOADER BUTTON & CONTAINER */
+    div[data-testid="stFileUploader"] {
+        background-color: #1e293b !important;
+        border: 2px dashed #38bdf8 !important;
+        border-radius: 10px !important;
+        padding: 15px !important;
+    }
+    div[data-testid="stFileUploader"] section {
+        background-color: #0f172a !important;
+    }
+    div[data-testid="stFileUploader"] button {
+        background-color: #0284c7 !important;
+        color: #ffffff !important;
+        border: 1px solid #38bdf8 !important;
+        font-weight: bold !important;
+    }
+    div[data-testid="stFileUploader"] button:hover {
+        background-color: #0369a1 !important;
+    }
+    div[data-testid="stFileUploader"] span {
+        color: #f3f4f6 !important;
+        font-weight: bold !important;
+    }
+
     /* Buttons */
     .stButton>button {
         border-radius: 8px;
@@ -138,7 +187,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ================= DB CONFIGURATION WITH UTF-8 BANGAL SUPPORT =================
+# ================= DB CONFIGURATION WITH UTF-8 BENGALI SUPPORT =================
 DB_CONFIG = {
     'host': 'sql12.freesqldatabase.com',
     'user': 'sql12835523',
@@ -206,7 +255,32 @@ def process_uploaded_image(img_file):
         return f"data:{mime_type};base64,{base64_str}"
     return None
 
-# ================= PDF GENERATOR (SUMMARY SHEET) =================
+# ================= FORMATTING TOOLBAR HELPER FOR TEACHERS =================
+def render_formatting_toolbar(target_key):
+    st.write("✏️ **Quick Text Formatting Options (ফরম্যাটিং বাটন):**")
+    btn_col1, btn_col2, btn_col3, btn_col4, btn_col5 = st.columns(5)
+    
+    def insert_tag(tag_open, tag_close):
+        current_val = st.session_state.get(target_key, "")
+        st.session_state[target_key] = current_val + f"{tag_open}পাঠ্য লিখে প্রতিস্থাপন করুন{tag_close}"
+
+    with btn_col1:
+        if st.button("<b>Bold</b>", key=f"b_{target_key}"):
+            insert_tag("<b>", "</b>")
+    with btn_col2:
+        if st.button("<i>Italic</i>", key=f"i_{target_key}"):
+            insert_tag("<i>", "</i>")
+    with btn_col3:
+        if st.button("<u>Underline</u>", key=f"u_{target_key}"):
+            insert_tag("<u>", "</u>")
+    with btn_col4:
+        if st.button("x² Power", key=f"sup_{target_key}"):
+            insert_tag("<sup>", "</sup>")
+    with btn_col5:
+        if st.button("H₂O Base", key=f"sub_{target_key}"):
+            insert_tag("<sub>", "</sub>")
+
+# ================= PDF GENERATOR (A4 SUMMARY SHEET WITH BENGALI SUPPORT) =================
 def generate_pdf_report(data_rows, title="Exam Result Sheet"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -214,43 +288,49 @@ def generate_pdf_report(data_rows, title="Exam Result Sheet"):
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        'PDFTitle', parent=styles['Heading1'], fontName='Helvetica-Bold',
+        'PDFTitle', parent=styles['Heading1'], fontName=PDF_FONT,
         fontSize=18, textColor=colors.HexColor("#1e3a8a"), spaceAfter=15, alignment=1
     )
     
+    cell_style = ParagraphStyle('PDFCell', parent=styles['Normal'], fontName=PDF_FONT, fontSize=9)
+    header_style = ParagraphStyle('PDFHeader', parent=styles['Normal'], fontName=PDF_FONT, fontSize=9, textColor=colors.whitesmoke)
+
     elements.append(Paragraph(title, title_style))
     elements.append(Spacer(1, 10))
     
     if data_rows:
         headers = list(data_rows[0].keys())
-        table_data = [[str(h).replace('_', ' ').title() for h in headers]]
+        table_data = [[Paragraph(str(h).replace('_', ' ').title(), header_style) for h in headers]]
         
         total_obtained_marks = 0
         total_max_marks = 0
 
         for row in data_rows:
-            table_data.append([str(row[h]) if row[h] is not None else "" for h in headers])
+            row_cells = []
+            for h in headers:
+                val = str(row[h]) if row[h] is not None else ""
+                row_cells.append(Paragraph(val, cell_style))
+            table_data.append(row_cells)
+
             if 'score' in row and row['score'] is not None:
                 total_obtained_marks += int(row['score'])
             if 'total_questions' in row and row['total_questions'] is not None:
                 total_max_marks += int(row['total_questions'])
             
-        t = Table(table_data)
+        t = Table(table_data, repeatRows=1)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1e3a8a")),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,0), 9),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#f8fafc")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
-            ('PADDING', (0,0), (-1,-1), 5),
+            ('PADDING', (0,0), (-1,-1), 6),
         ]))
         elements.append(t)
         
         elements.append(Spacer(1, 15))
         summary_style = ParagraphStyle(
-            'PDFSummary', parent=styles['Normal'], fontName='Helvetica-Bold',
+            'PDFSummary', parent=styles['Normal'], fontName=PDF_FONT,
             fontSize=11, textColor=colors.HexColor("#0f172a"), spaceAfter=5
         )
         elements.append(Paragraph(f"<b>Total Score Obtained:</b> {total_obtained_marks} / {total_max_marks}", summary_style))
@@ -258,13 +338,13 @@ def generate_pdf_report(data_rows, title="Exam Result Sheet"):
             percentage = (total_obtained_marks / total_max_marks) * 100
             elements.append(Paragraph(f"<b>Overall Percentage:</b> {percentage:.2f}%", summary_style))
     else:
-        elements.append(Paragraph("No records found.", styles['Normal']))
+        elements.append(Paragraph("No records found.", cell_style))
         
     doc.build(elements)
     buffer.seek(0)
     return buffer.getvalue()
 
-# ================= PDF GENERATOR (STUDENT DETAILED ANSWER SHEET) =================
+# ================= PDF GENERATOR (A4 STUDENT DETAILED ANSWER SHEET WITH BENGALI SUPPORT) =================
 def generate_student_detailed_pdf(info, q_list, user_answers):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=40)
@@ -272,31 +352,39 @@ def generate_student_detailed_pdf(info, q_list, user_answers):
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        'PDFTitle', parent=styles['Heading1'], fontName='Helvetica-Bold',
+        'PDFTitle', parent=styles['Heading1'], fontName=PDF_FONT,
         fontSize=18, textColor=colors.HexColor("#1e3a8a"), spaceAfter=15, alignment=1
     )
     
+    cell_style = ParagraphStyle('PDFCell', parent=styles['Normal'], fontName=PDF_FONT, fontSize=8)
+    header_style = ParagraphStyle('PDFHeader', parent=styles['Normal'], fontName=PDF_FONT, fontSize=9, textColor=colors.whitesmoke)
+    info_style = ParagraphStyle('PDFInfo', parent=styles['Normal'], fontName=PDF_FONT, fontSize=9, textColor=colors.HexColor("#0f172a"))
+
     elements.append(Paragraph("Student Examination Answer Sheet", title_style))
     elements.append(Spacer(1, 5))
     
     # Student & Exam Info Header Table
     header_data = [
-        [f"Student Name: {info['name']}", f"User ID: {info['roll']}"],
-        [f"Class: {info['class']}", f"Subject: {info['sub']}"],
-        [f"Chapter: {info['chap']}", f"Exam Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}"]
+        [Paragraph(f"<b>Student Name:</b> {info['name']}", info_style), Paragraph(f"<b>User ID:</b> {info['roll']}", info_style)],
+        [Paragraph(f"<b>Class:</b> {info['class']}", info_style), Paragraph(f"<b>Subject:</b> {info['sub']}", info_style)],
+        [Paragraph(f"<b>Chapter:</b> {info['chap']}", info_style), Paragraph(f"<b>Exam Date:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}", info_style)]
     ]
     header_table = Table(header_data, colWidths=[260, 260])
     header_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor("#0f172a")),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
     elements.append(header_table)
     elements.append(Spacer(1, 10))
     
     # Detailed Questions Table
-    table_data = [["Q#", "Question", "Your Answer", "Correct Answer", "Result"]]
+    table_data = [[
+        Paragraph("<b>Q#</b>", header_style), 
+        Paragraph("<b>Question</b>", header_style), 
+        Paragraph("<b>Your Answer</b>", header_style), 
+        Paragraph("<b>Correct Answer</b>", header_style), 
+        Paragraph("<b>Result</b>", header_style)
+    ]]
     score = 0
     
     for idx, q in enumerate(q_list):
@@ -307,25 +395,24 @@ def generate_student_detailed_pdf(info, q_list, user_answers):
         is_correct = (u_ans_idx == q['correct'])
         if is_correct:
             score += 1
-            res_txt = "Correct"
+            res_txt = "<font color='green'><b>Correct</b></font>"
         else:
-            res_txt = "Incorrect"
+            res_txt = "<font color='red'><b>Incorrect</b></font>"
             
-        p_q = Paragraph(q['text'], styles['Normal'])
-        p_u = Paragraph(u_ans_txt, styles['Normal'])
-        p_c = Paragraph(c_ans_txt, styles['Normal'])
+        p_q = Paragraph(q['text'], cell_style)
+        p_u = Paragraph(u_ans_txt, cell_style)
+        p_c = Paragraph(c_ans_txt, cell_style)
+        p_r = Paragraph(res_txt, cell_style)
         
-        table_data.append([str(idx + 1), p_q, p_u, p_c, res_txt])
+        table_data.append([Paragraph(str(idx + 1), cell_style), p_q, p_u, p_c, p_r])
         
-    q_table = Table(table_data, colWidths=[30, 210, 110, 110, 60])
+    q_table = Table(table_data, colWidths=[30, 210, 110, 110, 60], repeatRows=1)
     q_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1e3a8a")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('ALIGN', (0,0), (0,-1), 'CENTER'),
         ('ALIGN', (4,0), (4,-1), 'CENTER'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
         ('PADDING', (0,0), (-1,-1), 4),
     ]))
@@ -334,7 +421,7 @@ def generate_student_detailed_pdf(info, q_list, user_answers):
     
     # Total Marks Summary
     summary_style = ParagraphStyle(
-        'PDFSummary', parent=styles['Normal'], fontName='Helvetica-Bold',
+        'PDFSummary', parent=styles['Normal'], fontName=PDF_FONT,
         fontSize=11, textColor=colors.HexColor("#0f172a")
     )
     elements.append(Paragraph(f"<b>Total Score Obtained:</b> {score} / {len(q_list)}", summary_style))
@@ -343,15 +430,13 @@ def generate_student_detailed_pdf(info, q_list, user_answers):
     # Bottom Footer: Teacher Info & Signature Section
     teacher_name = info.get('teacher_name', 'N/A')
     sig_data = [
-        [f"Teacher Name: {teacher_name}", ""],
-        [f"Subject: {info['sub']}", ""],
-        [f"Chapter: {info['chap']}", "________________________"],
-        ["", "Teacher's Signature"]
+        [Paragraph(f"<b>Teacher Name:</b> {teacher_name}", info_style), Paragraph("", info_style)],
+        [Paragraph(f"<b>Subject:</b> {info['sub']}", info_style), Paragraph("", info_style)],
+        [Paragraph(f"<b>Chapter:</b> {info['chap']}", info_style), Paragraph("________________________", info_style)],
+        [Paragraph("", info_style), Paragraph("<b>Teacher's Signature</b>", info_style)]
     ]
     sig_table = Table(sig_data, colWidths=[300, 220])
     sig_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
         ('ALIGN', (1,0), (1,-1), 'RIGHT'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
@@ -939,7 +1024,10 @@ elif menu == "👨‍🏫 Teacher Portal":
                     conn.close()
 
                 q_chap = st.selectbox("Chapter", q_chaps if q_chaps else ["None"], key="tq_chap")
-                q_text = st.text_area("Question Text (Bangla & HTML Formatting Allowed)", help="💡 Tip: Bold: <b>text</b>, Italic: <i>text</i>, Superscript: x<sup>2</sup>, Subscript: H<sub>2</sub>O")
+                
+                # WYSIWYG Formatting Tools Helper
+                render_formatting_toolbar("add_q_text_input")
+                q_text = st.text_area("Question Text", key="add_q_text_input", help="বাংলা টাইপ করুন বা উপরের ফরম্যাটিং বাটন ব্যবহার করুন।")
                 
                 q_img_file = st.file_uploader("📷 Browse & Upload Diagram/Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'], key="add_q_img")
                 img_url = process_uploaded_image(q_img_file)
@@ -983,7 +1071,12 @@ elif menu == "👨‍🏫 Teacher Portal":
                     selected_q = q_dict[sel_q_key]
 
                     st.subheader(f"Edit Question ID: {selected_q['id']}")
-                    e_text = st.text_area("Question Text (Bangla & HTML Supported)", value=selected_q['question_text'])
+                    
+                    render_formatting_toolbar("edit_q_text_input")
+                    if "edit_q_text_input" not in st.session_state:
+                        st.session_state["edit_q_text_input"] = selected_q['question_text']
+                    
+                    e_text = st.text_area("Question Text", key="edit_q_text_input")
                     
                     if selected_q.get('image_path'):
                         st.write("Current Image Preview:")
@@ -1042,7 +1135,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                         st.rerun()
 
         with t_tab4:
-            st.subheader("📊 Exam Performance & PDF Reports")
+            st.subheader("📊 Exam Performance & PDF Reports (A4 Format)")
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 cursor.execute("""
@@ -1055,7 +1148,7 @@ elif menu == "👨‍🏫 Teacher Portal":
                 st.dataframe(t_results, use_container_width=True)
                 pdf_bytes = generate_pdf_report(t_results, title=f"Exam Results - {teacher['teacher_name']}")
                 st.download_button(
-                    label="📥 Download Teacher Batch Result Sheet (PDF with Total)",
+                    label="📥 Download Teacher Batch Result Sheet (A4 PDF with Total)",
                     data=pdf_bytes,
                     file_name=f"Results_{teacher['teacher_code']}.pdf",
                     mime="application/pdf",
@@ -1087,7 +1180,7 @@ elif menu == "📊 View Student Results":
             if rows:
                 st.dataframe(rows, use_container_width=True)
                 pdf_data = generate_pdf_report(rows, title=f"Result Sheet - {rows[0]['student_name']} ({search_uid})")
-                st.download_button("📄 Download Individual PDF Result (With Total Marks)", data=pdf_data, file_name=f"Result_{search_uid}.pdf", mime="application/pdf")
+                st.download_button("📄 Download Individual A4 PDF Result (With Total Marks)", data=pdf_data, file_name=f"Result_{search_uid}.pdf", mime="application/pdf")
             else:
                 st.warning("❌ কোনো ফলাফল পাওয়া যায়নি!")
 
@@ -1244,7 +1337,12 @@ elif menu == "👑 Super Admin Panel":
                 selected_admin_q = q_admin_dict[sel_admin_q_key]
 
                 st.subheader(f"Admin Edit Question ID: {selected_admin_q['id']}")
-                a_q_text = st.text_area("Question Text (Bangla & HTML Supported)", value=selected_admin_q['question_text'])
+                
+                render_formatting_toolbar("admin_edit_q_text")
+                if "admin_edit_q_text" not in st.session_state:
+                    st.session_state["admin_edit_q_text"] = selected_admin_q['question_text']
+
+                a_q_text = st.text_area("Question Text", key="admin_edit_q_text")
                 
                 if selected_admin_q.get('image_path'):
                     st.write("Current Image Preview:")
