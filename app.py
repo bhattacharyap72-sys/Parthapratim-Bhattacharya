@@ -25,7 +25,6 @@ def setup_bengali_font():
     font_path = "NotoSansBengali-Regular.ttf"
     if not os.path.exists(font_path):
         try:
-            # Download Noto Sans Bengali font from Google Fonts GitHub repository
             url = "https://github.com/google/fonts/raw/main/ofl/notosansbengali/NotoSansBengali%5Bwdth%2Cwght%5D.ttf"
             urllib.request.urlretrieve(url, font_path)
         except Exception as e:
@@ -793,7 +792,6 @@ if menu == "📝 Student Portal":
                     
                     with st.form("exam_form"):
                         for idx, q in enumerate(q_list):
-                            # HTML & Bengali formatting support
                             st.markdown(f"#### Q{idx+1}. {q['text']}", unsafe_allow_html=True)
                             if q['image']:
                                 try:
@@ -812,7 +810,6 @@ if menu == "📝 Student Portal":
                         st.session_state.exam_finished = True
                         st.rerun()
             else:
-                # Exam Completion Screen
                 st.balloons()
                 st.success(f"🎉 পরীক্ষা সফলভাবে জমা হয়েছে! আপনার স্কোর: **{st.session_state.last_score} / {len(q_list)}**")
                 
@@ -1006,14 +1003,20 @@ elif menu == "👨‍🏫 Teacher Portal":
             st.divider()
 
             if q_mode == "➕ Add New Question":
-                q_cls = st.selectbox("Class", CLASSES, key="tq_cls")
+                # Reset key suffix initialize
+                if "q_reset_count" not in st.session_state:
+                    st.session_state.q_reset_count = 0
+
+                reset_id = st.session_state.q_reset_count
+
+                q_cls = st.selectbox("Class", CLASSES, key=f"tq_cls_{reset_id}")
                 conn = get_db_connection()
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT subject_name FROM subjects WHERE class_name=%s AND teacher_id=%s", (q_cls, teacher['id']))
                     q_subs = [r['subject_name'] for r in cursor.fetchall()]
                 conn.close()
 
-                q_sub = st.selectbox("Subject", q_subs if q_subs else ["None"], key="tq_sub")
+                q_sub = st.selectbox("Subject", q_subs if q_subs else ["None"], key=f"tq_sub_{reset_id}")
                 
                 q_chaps = []
                 if q_subs:
@@ -1023,24 +1026,25 @@ elif menu == "👨‍🏫 Teacher Portal":
                         q_chaps = [r['chapter_name'] for r in cursor.fetchall()]
                     conn.close()
 
-                q_chap = st.selectbox("Chapter", q_chaps if q_chaps else ["None"], key="tq_chap")
+                q_chap = st.selectbox("Chapter", q_chaps if q_chaps else ["None"], key=f"tq_chap_{reset_id}")
                 
-                # WYSIWYG Formatting Tools Helper
-                render_formatting_toolbar("add_q_text_input")
-                q_text = st.text_area("Question Text", key="add_q_text_input", help="বাংলা টাইপ করুন বা উপরের ফরম্যাটিং বাটন ব্যবহার করুন।")
+                # Dynamic key handling for safe text input reset
+                target_q_key = f"add_q_text_input_{reset_id}"
+                render_formatting_toolbar(target_q_key)
+                q_text = st.text_area("Question Text", key=target_q_key, help="বাংলা টাইপ করুন বা উপরের ফরম্যাটিং বাটন ব্যবহার করুন।")
                 
-                q_img_file = st.file_uploader("📷 Browse & Upload Diagram/Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'], key="add_q_img")
+                q_img_file = st.file_uploader("📷 Browse & Upload Diagram/Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'], key=f"add_q_img_{reset_id}")
                 img_url = process_uploaded_image(q_img_file)
                 if img_url:
                     st.image(img_url, caption="Image Preview", width=250)
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    opt_corr = st.text_input("✅ Correct Option", key="add_opt_corr")
-                    opt_w1 = st.text_input("❌ Option 2", key="add_opt_w1")
+                    opt_corr = st.text_input("✅ Correct Option", key=f"add_opt_corr_{reset_id}")
+                    opt_w1 = st.text_input("❌ Option 2", key=f"add_opt_w1_{reset_id}")
                 with col2:
-                    opt_w2 = st.text_input("❌ Option 3", key="add_opt_w2")
-                    opt_w3 = st.text_input("❌ Option 4", key="add_opt_w3")
+                    opt_w2 = st.text_input("❌ Option 3", key=f"add_opt_w2_{reset_id}")
+                    opt_w3 = st.text_input("❌ Option 4", key=f"add_opt_w3_{reset_id}")
 
                 if st.button("Save Question to Bank", type="primary"):
                     if q_text and opt_corr and opt_w1 and opt_w2 and opt_w3 and q_chap != "None":
@@ -1057,16 +1061,10 @@ elif menu == "👨‍🏫 Teacher Portal":
                             conn.commit()
                         conn.close()
                         
-                        # --- input fields reset করার জন্য session state clear ---
-                        st.session_state["add_q_text_input"] = ""
-                        st.session_state["add_opt_corr"] = ""
-                        st.session_state["add_opt_w1"] = ""
-                        st.session_state["add_opt_w2"] = ""
-                        st.session_state["add_opt_w3"] = ""
-                        
+                        # Dynamic Counter Increment -> Widget auto-resets safely!
+                        st.session_state.q_reset_count += 1
                         st.success("✅ প্রশ্ন সফলভাবে সেভ করা হয়েছে!")
-                        time.sleep(1) # ১ সেকেন্ড ওয়েট করে পেজ রিফ্রেশ হবে
-                        st.rerun()    # পেজ রিফ্রেশ হলে সব ইনপুট বক্স আবার নতুন খালি হয়ে যাবে
+                        st.rerun()
 
             elif q_mode == "✏️ View & Edit My Questions":
                 conn = get_db_connection()
@@ -1082,11 +1080,13 @@ elif menu == "👨‍🏫 Teacher Portal":
 
                     st.subheader(f"Edit Question ID: {selected_q['id']}")
                     
-                    render_formatting_toolbar("edit_q_text_input")
-                    if "edit_q_text_input" not in st.session_state:
-                        st.session_state["edit_q_text_input"] = selected_q['question_text']
+                    edit_q_key = f"edit_q_text_input_{selected_q['id']}"
+                    render_formatting_toolbar(edit_q_key)
                     
-                    e_text = st.text_area("Question Text", key="edit_q_text_input")
+                    if edit_q_key not in st.session_state:
+                        st.session_state[edit_q_key] = selected_q['question_text']
+                    
+                    e_text = st.text_area("Question Text", key=edit_q_key)
                     
                     if selected_q.get('image_path'):
                         st.write("Current Image Preview:")
@@ -1094,14 +1094,14 @@ elif menu == "👨‍🏫 Teacher Portal":
                             st.image(selected_q['image_path'], width=200)
                         except: pass
 
-                    e_img_file = st.file_uploader("📷 Update Question Image (PNG/JPG - Leave blank to keep existing)", type=['png', 'jpg', 'jpeg'], key="edit_q_img")
-                    remove_img = st.checkbox("🗑️ Remove existing image")
+                    e_img_file = st.file_uploader("📷 Update Question Image (PNG/JPG - Leave blank to keep existing)", type=['png', 'jpg', 'jpeg'], key=f"edit_q_img_{selected_q['id']}")
+                    remove_img = st.checkbox("🗑️ Remove existing image", key=f"rem_img_{selected_q['id']}")
                     
-                    e_opt1 = st.text_input("Option 1", value=selected_q['option1'])
-                    e_opt2 = st.text_input("Option 2", value=selected_q['option2'])
-                    e_opt3 = st.text_input("Option 3", value=selected_q['option3'])
-                    e_opt4 = st.text_input("Option 4", value=selected_q['option4'])
-                    e_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_q['correct_option'])-1)
+                    e_opt1 = st.text_input("Option 1", value=selected_q['option1'], key=f"e_opt1_{selected_q['id']}")
+                    e_opt2 = st.text_input("Option 2", value=selected_q['option2'], key=f"e_opt2_{selected_q['id']}")
+                    e_opt3 = st.text_input("Option 3", value=selected_q['option3'], key=f"e_opt3_{selected_q['id']}")
+                    e_opt4 = st.text_input("Option 4", value=selected_q['option4'], key=f"e_opt4_{selected_q['id']}")
+                    e_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_q['correct_option'])-1, key=f"e_corr_{selected_q['id']}")
 
                     if st.button("Update Question", type="primary"):
                         final_img = selected_q.get('image_path')
@@ -1348,11 +1348,13 @@ elif menu == "👑 Super Admin Panel":
 
                 st.subheader(f"Admin Edit Question ID: {selected_admin_q['id']}")
                 
-                render_formatting_toolbar("admin_edit_q_text")
-                if "admin_edit_q_text" not in st.session_state:
-                    st.session_state["admin_edit_q_text"] = selected_admin_q['question_text']
+                admin_edit_key = f"admin_edit_q_text_{selected_admin_q['id']}"
+                render_formatting_toolbar(admin_edit_key)
+                
+                if admin_edit_key not in st.session_state:
+                    st.session_state[admin_edit_key] = selected_admin_q['question_text']
 
-                a_q_text = st.text_area("Question Text", key="admin_edit_q_text")
+                a_q_text = st.text_area("Question Text", key=admin_edit_key)
                 
                 if selected_admin_q.get('image_path'):
                     st.write("Current Image Preview:")
@@ -1360,14 +1362,14 @@ elif menu == "👑 Super Admin Panel":
                         st.image(selected_admin_q['image_path'], width=200)
                     except: pass
 
-                a_img_file = st.file_uploader("📷 Update Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'], key="admin_edit_q_img")
-                a_remove_img = st.checkbox("🗑️ Remove image", key="admin_rem_img")
+                a_img_file = st.file_uploader("📷 Update Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'], key=f"admin_edit_q_img_{selected_admin_q['id']}")
+                a_remove_img = st.checkbox("🗑️ Remove image", key=f"admin_rem_img_{selected_admin_q['id']}")
 
-                a_opt1 = st.text_input("Option 1", value=selected_admin_q['option1'])
-                a_opt2 = st.text_input("Option 2", value=selected_admin_q['option2'])
-                a_opt3 = st.text_input("Option 3", value=selected_admin_q['option3'])
-                a_opt4 = st.text_input("Option 4", value=selected_admin_q['option4'])
-                a_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_admin_q['correct_option'])-1)
+                a_opt1 = st.text_input("Option 1", value=selected_admin_q['option1'], key=f"a_opt1_{selected_admin_q['id']}")
+                a_opt2 = st.text_input("Option 2", value=selected_admin_q['option2'], key=f"a_opt2_{selected_admin_q['id']}")
+                a_opt3 = st.text_input("Option 3", value=selected_admin_q['option3'], key=f"a_opt3_{selected_admin_q['id']}")
+                a_opt4 = st.text_input("Option 4", value=selected_admin_q['option4'], key=f"a_opt4_{selected_admin_q['id']}")
+                a_corr = st.selectbox("Correct Option Number (1-4)", [1, 2, 3, 4], index=int(selected_admin_q['correct_option'])-1, key=f"a_corr_{selected_admin_q['id']}")
 
                 if st.button("Update Question (Admin Overwrite)", type="primary"):
                     admin_final_img = selected_admin_q.get('image_path')
